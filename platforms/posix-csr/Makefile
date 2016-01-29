@@ -2,24 +2,21 @@
 BTSTACK_ROOT = ../..
 POSIX_ROOT= ${BTSTACK_ROOT}/platforms/posix
 
-CORE += main.c stdin_support.c bt_control_cc256x.c bluetooth_init_cc2564B_1.2_BT_Spec_4.1.c
+CORE += main.c stdin_support.c bt_control_csr.c
 
 COMMON += hci_transport_h4.c run_loop_posix.c remote_device_db_fs.c
 
 include ${BTSTACK_ROOT}/example/embedded/Makefile.inc
 
-# fetch and convert init scripts
-include ${BTSTACK_ROOT}/chipset-cc256x/Makefile.inc
-
-CFLAGS += -I$(BTSTACK_ROOT)/chipset-cc256x
+CFLAGS += -I$(BTSTACK_ROOT)/chipset-csr
 
 CFLAGS  += -g -Wall 
 
 # 
-CFLAGS += -Wmissing-prototypes -Wstrict-prototypes -Wshadow -Werror
+# CFLAGS += -Wmissing-prototypes -Wstrict-prototypes -Wshadow -Werror
 
 VPATH += ${BTSTACK_ROOT}/platforms/posix/src
-VPATH += ${BTSTACK_ROOT}/chipset-cc256x
+VPATH += ${BTSTACK_ROOT}/chipset-csr
 
 ifeq ($(OS),Windows_NT)
 LDFLAGS += -lws2_32

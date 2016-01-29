@@ -255,6 +255,7 @@ typedef enum {
     HFP_CALLHELD_STATUS_CALL_ON_HOLD_AND_NO_ACTIVE_CALLS 
 } hfp_callheld_status_t;
 
+
 typedef enum {
     HFP_AG_INCOMING_CALL,
     HFP_AG_INCOMING_CALL_ACCEPTED_BY_AG,
@@ -275,7 +276,13 @@ typedef enum {
     HFP_AG_RESPONSE_AND_HOLD_REJECT_HELD_CALL_BY_AG,
     HFP_AG_RESPONSE_AND_HOLD_ACCEPT_INCOMING_CALL_BY_HF,
     HFP_AG_RESPONSE_AND_HOLD_ACCEPT_HELD_CALL_BY_HF,
-    HFP_AG_RESPONSE_AND_HOLD_REJECT_HELD_CALL_BY_HF
+    HFP_AG_RESPONSE_AND_HOLD_REJECT_HELD_CALL_BY_HF,
+    HFP_AG_CALL_HOLD_USER_BUSY,
+    HFP_AG_CALL_HOLD_RELEASE_ACTIVE_ACCEPT_HELD_OR_WAITING_CALL,
+    HFP_AG_CALL_HOLD_PARK_ACTIVE_ACCEPT_HELD_OR_WAITING_CALL,
+    HFP_AG_CALL_HOLD_ADD_HELD_CALL,
+    HFP_AG_CALL_HOLD_EXIT_AND_JOIN_CALLS,
+    HFP_AG_SET_CLIP
 } hfp_ag_call_event_t;
 
 
@@ -553,6 +560,7 @@ typedef struct hfp_connection {
     uint8_t next_subscriber_number_to_send;
 
     int send_status_of_current_calls;
+    int next_call_index;
 
     // HF only
     hfp_hf_query_operator_state_t hf_query_operator_state;
@@ -593,6 +601,7 @@ typedef struct hfp_connection {
     uint8_t clcc_mode;
     uint8_t clcc_mpty;
 
+    uint8_t call_index;
     // also used for CLCC if set
     uint8_t bnip_type;       // 0 == not set
     char    bnip_number[25]; // 

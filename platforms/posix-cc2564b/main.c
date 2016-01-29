@@ -56,7 +56,7 @@
 #include "hci.h"
 #include "hci_dump.h"
 #include "stdin_support.h"
-#include "hal_led.h"
+#include <btstack/hal_led.h>
 #include "bt_control_cc256x.h"
 
 int btstack_main(int argc, const char * argv[]);
@@ -64,6 +64,7 @@ int btstack_main(int argc, const char * argv[]);
 static hci_uart_config_t hci_uart_config_cc256x = {
     NULL,
     115200,
+    921600
 };
 
 static void sigint_handler(int param){
@@ -92,11 +93,23 @@ int main(int argc, const char * argv[]){
 	btstack_memory_init();
     run_loop_init(RUN_LOOP_POSIX);
 	    
+#if 0
+    // Ubuntu
+
+    // use logger: format HCI_DUMP_PACKETLOGGER, HCI_DUMP_BLUEZ or HCI_DUMP_STDOUT
+    hci_dump_open("hci_dump.pklg", HCI_DUMP_PACKETLOGGER);
+
+    // pick serial port
+    hci_uart_config_cc256x.device_name = "/dev/ttyUSB0";
+#else
+    // OS X
+
     // use logger: format HCI_DUMP_PACKETLOGGER, HCI_DUMP_BLUEZ or HCI_DUMP_STDOUT
     hci_dump_open("/tmp/hci_dump.pklg", HCI_DUMP_PACKETLOGGER);
 
     // pick serial port
-    hci_uart_config_cc256x.device_name = "/dev/tty.usbserial-AD025KU2";
+    hci_uart_config_cc256x.device_name = "/dev/tty.usbserial-A900K0VK";
+#endif
 
     // init HCI
 	hci_transport_t    * transport = hci_transport_h4_instance();

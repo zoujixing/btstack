@@ -848,6 +848,11 @@ static void hci_initialization_timeout_handler(timer_source_t * ds){
         case HCI_INIT_W4_SEND_BAUD_CHANGE:
             log_info("Local baud rate change to %"PRIu32, ((hci_uart_config_t *)hci_stack->config)->baudrate_main);
             hci_stack->hci_transport->set_baudrate(((hci_uart_config_t *)hci_stack->config)->baudrate_main);
+            // For CSR, HCI Reset is sent on new baud rate
+            if (hci_stack->manufacturer == 0x000a){
+                hci_stack->substate = HCI_INIT_SEND_RESET_CSR_WARM_BOOT;
+                hci_run();
+            }
             break;
         default:
             break;
@@ -932,7 +937,16 @@ static void hci_initializing_run(void){
                             run_loop_set_timer(&hci_stack->timeout, 100);
                             run_loop_set_timer_handler(&hci_stack->timeout, hci_initialization_timeout_handler);
                             run_loop_add_timer(&hci_stack->timeout);
-                            hci_stack->substate = HCI_INIT_W4_CUSTOM_INIT_CSR_WARM_BOOT;
+                            if (hci_stack->manufacturer == 0x000a
+                                && hci_stack->config
+                                && hci_stack->control
+                                // && hci_stack->control->baudrate_cmd -- there's no such command
+                                && hci_stack->hci_transport->set_baudrate
+                                && ((hci_uart_config_t *)hci_stack->config)->baudrate_main){
+                                hci_stack->substate = HCI_INIT_W4_SEND_BAUD_CHANGE;
+                            } else {
+                               hci_stack->substate = HCI_INIT_W4_CUSTOM_INIT_CSR_WARM_BOOT;
+                            }
                             break;
                     }
                     hci_stack->hci_transport->send_packet(HCI_COMMAND_DATA_PACKET, hci_stack->hci_packet_buffer, size);
@@ -999,6 +1013,10 @@ static void hci_initializing_run(void){
         case HCI_INIT_WRITE_SCAN_ENABLE:
             hci_send_cmd(&hci_write_scan_enable, (hci_stack->connectable << 1) | hci_stack->discoverable); // page scan
             hci_stack->substate = HCI_INIT_W4_WRITE_SCAN_ENABLE;
+            break;
+        case HCI_INIT_WRITE_SYNCHRONOUS_FLOW_CONTROL_ENABLE:
+            hci_stack->substate = HCI_INIT_W4_WRITE_SYNCHRONOUS_FLOW_CONTROL_ENABLE;
+            hci_send_cmd(&hci_write_synchronous_flow_control_enable, 1); // SCO tracking enabled
             break;
 #ifdef HAVE_BLE
         // LE INIT
@@ -1188,17 +1206,34 @@ static void hci_initializing_event_handler(uint8_t * packet, uint16_t size){
                 return;
             }
             break;
+        case HCI_INIT_W4_WRITE_PAGE_TIMEOUT:
+            break;
         case HCI_INIT_W4_LE_READ_BUFFER_SIZE:
             // skip write le host if not supported (e.g. on LE only EM9301)
             if (hci_stack->local_supported_commands[0] & 0x02) break;
             hci_stack->substate = HCI_INIT_LE_SET_SCAN_PARAMETERS;
             return;
+
+#ifdef HAVE_SCO_OVER_HCI
+        case HCI_INIT_W4_WRITE_SCAN_ENABLE:
+            // just go to next state
+            break;
+        case HCI_INIT_W4_WRITE_SYNCHRONOUS_FLOW_CONTROL_ENABLE:
+            if (!hci_le_supported()){
+                // SKIP LE init for Classic only configuration
+                hci_stack->substate = HCI_INIT_DONE;
+                return;
+            }
+            break;
+#else
         case HCI_INIT_W4_WRITE_SCAN_ENABLE:
             if (!hci_le_supported()){
                 // SKIP LE init for Classic only configuration
                 hci_stack->substate = HCI_INIT_DONE;
                 return;
             }
+#endif
+            break;
         default:
             break;
     }
@@ -1303,6 +1338,11 @@ static void event_handler(uint8_t *packet, int size){
                     (packet[OFFSET_OF_DATA_IN_COMMAND_COMPLETE+1+14] & 0X80) >> 7 |  // Octet 14, bit 7
                     (packet[OFFSET_OF_DATA_IN_COMMAND_COMPLETE+1+24] & 0x40) >> 5;   // Octet 24, bit 6 
             }
+            if (COMMAND_COMPLETE_EVENT(packet, hci_write_synchronous_flow_control_enable)){
+                if (packet[5] == 0){
+                    hci_stack->synchronous_flow_control_enabled = 1;
+                }
+            } 
             break;
             
         case HCI_EVENT_COMMAND_STATUS:
@@ -3416,6 +3456,16 @@ void hci_set_sco_voice_setting(uint16_t voice_setting){
  */
 uint16_t hci_get_sco_voice_setting(){
     return hci_stack->sco_voice_setting;
+}
+
+/** @brief Get SCO packet length for current SCO Voice setting
+ *  @note  Using SCO packets of the exact length is required for USB transfer
+ *  @return Length of SCO packets in bytes (not audio frames)
+ */
+int hci_get_sco_packet_length(void){
+    // see Core Spec for H2 USB Transfer. 
+    if (hci_stack->sco_voice_setting & 0x0020) return 51;
+    return 27;
 }
 
 /**

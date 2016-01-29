@@ -591,15 +591,16 @@ typedef enum hci_init_state{
     HCI_INIT_W4_WRITE_SIMPLE_PAIRING_MODE,
     HCI_INIT_WRITE_PAGE_TIMEOUT,
     HCI_INIT_W4_WRITE_PAGE_TIMEOUT,
-    // HCI_INIT_WRITE_SYNCHRONOUS_FLOW_CONTROL_ENABLE,
-    // HCI_INIT_W4_SYNCHRONOUS_FLOW_CONTROL_ENABLE,
-
     HCI_INIT_WRITE_CLASS_OF_DEVICE,
     HCI_INIT_W4_WRITE_CLASS_OF_DEVICE,
     HCI_INIT_WRITE_LOCAL_NAME,
     HCI_INIT_W4_WRITE_LOCAL_NAME,
     HCI_INIT_WRITE_SCAN_ENABLE,
     HCI_INIT_W4_WRITE_SCAN_ENABLE,
+    
+    HCI_INIT_WRITE_SYNCHRONOUS_FLOW_CONTROL_ENABLE,
+    HCI_INIT_W4_WRITE_SYNCHRONOUS_FLOW_CONTROL_ENABLE,
+
     HCI_INIT_LE_READ_BUFFER_SIZE,
     HCI_INIT_W4_LE_READ_BUFFER_SIZE,
     HCI_INIT_WRITE_LE_HOST_SUPPORTED,
@@ -968,6 +969,12 @@ void hci_set_sco_voice_setting(uint16_t voice_setting);
  * @return current voice setting
  */
 uint16_t hci_get_sco_voice_setting(void);
+
+/** @brief Get SCO packet length for current SCO Voice setting
+ *  @note  Using SCO packets of the exact length is required for USB transfer
+ *  @return Length of SCO packets in bytes (not audio frames) incl. 3 byte header
+ */
+int hci_get_sco_packet_length(void);
 
 /* API_END */
 

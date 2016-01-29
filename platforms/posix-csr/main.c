@@ -37,72 +37,95 @@
 
 // *****************************************************************************
 //
-//  GSM model 
+// minimal setup for HCI code
 //
 // *****************************************************************************
 
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <signal.h>
 
-#ifndef BTSTACK_HFP_GSM_MODEL_H
-#define BTSTACK_HFP_GSM_MODEL_H
+#include "btstack-config.h"
 
+#include <btstack/run_loop.h>
+
+#include "debug.h"
+#include "btstack_memory.h"
 #include "hci.h"
-#include "sdp_query_rfcomm.h"
-#include "hfp.h"
+#include "hci_dump.h"
+#include "stdin_support.h"
+#include <btstack/hal_led.h>
+#include "bt_control_csr.h"
 
-#if defined __cplusplus
-extern "C" {
+int btstack_main(int argc, const char * argv[]);
+
+static hci_uart_config_t hci_uart_config_cc256x = {
+    NULL,
+    115200,
+    921600
+};
+
+static void sigint_handler(int param){
+
+#ifndef _WIN32
+    // reset anyway
+    btstack_stdin_reset();
 #endif
 
-/* API_START */
-
-typedef enum{
-    CALL_NONE,
-    CALL_INITIATED,
-    CALL_RESPONSE_HOLD,
-    CALL_ACTIVE,
-    CALL_HELD
-} hfp_gsm_call_status_t;
-
-typedef struct {
-    // TODO: use enhanced_status instead of status
-    hfp_gsm_call_status_t status;
-    hfp_enhanced_call_dir_t direction;
-    hfp_enhanced_call_status_t enhanced_status;
-    hfp_enhanced_call_mode_t mode;
-    hfp_enhanced_call_mpty_t mpty;
-    // TODO: sort on drop call, so that index corresponds to table index
-    int index;
-    uint8_t clip_type;
-    char    clip_number[25];
-} hfp_gsm_call_t;
-
-hfp_callheld_status_t hfp_gsm_callheld_status(void);
-hfp_call_status_t hfp_gsm_call_status(void);
-hfp_callsetup_status_t hfp_gsm_callsetup_status(void);
-
-int hfp_gsm_get_number_of_calls(void);
-char * hfp_gsm_last_dialed_number(void);
-void hfp_gsm_clear_last_dialed_number(void);
-
-
-hfp_gsm_call_t * hfp_gsm_call(int index);
-
-int hfp_gsm_call_possible(void);
-
-uint8_t hfp_gsm_clip_type(void);
-char *  hfp_gsm_clip_number(void);
-
-void hfp_gsm_init(void);
-
-void hfp_gsm_handle_event_with_clip(hfp_ag_call_event_t event, uint8_t type, const char * number);
-void hfp_gsm_handle_event_with_call_index(hfp_ag_call_event_t event, uint8_t index);
-void hfp_gsm_handle_event_with_call_number(hfp_ag_call_event_t event, const char * number);
-void hfp_gsm_handle_event(hfp_ag_call_event_t event);
-
-/* API_END */
-
-#if defined __cplusplus
+    log_info(" <= SIGINT received, shutting down..\n");   
+    hci_power_control(HCI_POWER_OFF);
+    hci_close();
+    log_info("Good bye, see you.\n");    
+    exit(0);
 }
+
+static int led_state = 0;
+void hal_led_toggle(void){
+    led_state = 1 - led_state;
+    printf("LED State %u\n", led_state);
+}
+
+int main(int argc, const char * argv[]){
+
+	/// GET STARTED with BTstack ///
+	btstack_memory_init();
+    run_loop_init(RUN_LOOP_POSIX);
+	    
+#if 0
+    // Ubuntu
+
+    // use logger: format HCI_DUMP_PACKETLOGGER, HCI_DUMP_BLUEZ or HCI_DUMP_STDOUT
+    hci_dump_open("hci_dump.pklg", HCI_DUMP_PACKETLOGGER);
+
+    // pick serial port
+    hci_uart_config_cc256x.device_name = "/dev/ttyUSB0";
+#else
+    // OS X
+
+    // use logger: format HCI_DUMP_PACKETLOGGER, HCI_DUMP_BLUEZ or HCI_DUMP_STDOUT
+    hci_dump_open("/tmp/hci_dump.pklg", HCI_DUMP_PACKETLOGGER);
+
+    // pick serial port
+    hci_uart_config_cc256x.device_name = "/dev/tty.usbserial-A900K0VK";
 #endif
 
-#endif
+    // init HCI
+	hci_transport_t    * transport = hci_transport_h4_instance();
+	bt_control_t       * control   = bt_control_csr_instance();
+    remote_device_db_t * remote_db = (remote_device_db_t *) &remote_device_db_fs;
+        
+	hci_init(transport, (void*) &hci_uart_config_cc256x, control, remote_db);
+    
+    // handle CTRL-c
+    signal(SIGINT, sigint_handler);
+
+    // setup app
+    btstack_main(argc, argv);
+
+    // go
+    run_loop_execute();    
+
+    return 0;
+}
