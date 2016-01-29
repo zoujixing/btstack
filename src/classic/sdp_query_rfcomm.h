@@ -42,7 +42,7 @@
 #ifndef __SDP_QUERY_RFCOMM_H
 #define __SDP_QUERY_RFCOMM_H
 
-#include "utils.h"
+#include "btstack_util.h"
 #include "classic/sdp_parser.h"
 #include "classic/sdp_query_util.h"
 
@@ -67,8 +67,6 @@ typedef struct sdp_query_rfcomm_service_event {
  * @brief Registers a callback to receive RFCOMM service and query complete event. 
  */
 void sdp_query_rfcomm_register_callback(void(*sdp_app_callback)(sdp_query_event_t * event, void * context), void * context);
-
-void sdp_query_rfcomm_deregister_callback(void);
 
 /** 
  * @brief Searches SDP records on a remote device for RFCOMM services with a given UUID.

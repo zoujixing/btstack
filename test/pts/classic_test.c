@@ -41,7 +41,7 @@
 //
 // *****************************************************************************
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -49,8 +49,8 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "hci_cmds.h"
-#include "run_loop.h"
+#include "hci_cmd.h"
+#include "btstack_run_loop.h"
 
 #include "hci.h"
 #include "gap.h"
@@ -338,7 +338,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
             psm = READ_BT_16(packet, 10);
             // uint16_t l2cap_cid  = READ_BT_16(packet, 12);
             printf("L2CAP incoming connection request on PSM %u\n", psm); 
-            // l2cap_accept_connection_internal(l2cap_cid);
+            // l2cap_accept_connection(l2cap_cid);
             break;
         }
 
@@ -348,7 +348,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
             rfcomm_channel_nr = packet[8];
             rfcomm_channel_id = READ_BT_16(packet, 9);
             printf("RFCOMM channel %u requested for %s\n\r", rfcomm_channel_nr, bd_addr_to_str(remote));
-            rfcomm_accept_connection_internal(rfcomm_channel_id);
+            rfcomm_accept_connection(rfcomm_channel_id);
             break;
             
         case RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE:
@@ -471,7 +471,7 @@ static void show_usage(void){
     printf("---\n");
 }
 
-static int  stdin_process(struct data_source *ds){
+static int  stdin_process(struct btstack_data_source *ds){
     char buffer;
     read(ds->fd, &buffer, 1);
 
@@ -608,15 +608,15 @@ static int  stdin_process(struct data_source *ds){
             hci_send_cmd(&hci_create_connection, remote, hci_usable_acl_packet_types(), 0, 0, 0, 1);
             break;
             // printf("Creating L2CAP Connection to %s, PSM SDP\n", bd_addr_to_str(remote));
-            // l2cap_create_channel_internal(NULL, packet_handler, remote, PSM_SDP, 100);
+            // l2cap_create_channel(packet_handler, remote, PSM_SDP, 100);
             // break;
         // case 'u':
         //     printf("Creating L2CAP Connection to %s, PSM 3\n", bd_addr_to_str(remote));
-        //     l2cap_create_channel_internal(NULL, packet_handler, remote, 3, 100);
+        //     l2cap_create_channel(packet_handler, remote, 3, 100);
         //     break;
         case 'q':
             printf("Send L2CAP Data\n");
-            l2cap_send_internal(local_cid, (uint8_t *) "0123456789", 10);
+            l2cap_send(local_cid, (uint8_t *) "0123456789", 10);
        break;
         case 'r':
             printf("Send L2CAP ECHO Request\n");
@@ -624,7 +624,7 @@ static int  stdin_process(struct data_source *ds){
             break;
         case 's':
             printf("L2CAP Channel Closed\n");
-            l2cap_disconnect_internal(local_cid, 0);
+            l2cap_disconnect(local_cid, 0);
             break;
         case 'x':
             printf("Outgoing L2CAP Channels to SDP will also require SSP\n");
@@ -637,7 +637,7 @@ static int  stdin_process(struct data_source *ds){
             break;
         case 'n':
             printf("Send RFCOMM Data\n");   // mtu < 60 
-            rfcomm_send_internal(rfcomm_channel_id, (uint8_t *) "012345678901234567890123456789012345678901234567890123456789", mtu);
+            rfcomm_send(rfcomm_channel_id, (uint8_t *) "012345678901234567890123456789012345678901234567890123456789", mtu);
             break;
         case 'u':
             printf("Sending RLS indicating framing error\n");   // mtu < 60 
@@ -653,7 +653,7 @@ static int  stdin_process(struct data_source *ds){
             break;
         case 'o':
             printf("RFCOMM Channel Closed\n");
-            rfcomm_disconnect_internal(rfcomm_channel_id);
+            rfcomm_disconnect(rfcomm_channel_id);
             rfcomm_channel_id = 0;
             break;
 

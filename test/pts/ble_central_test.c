@@ -47,10 +47,10 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
-#include "run_loop.h"
-#include "debug.h"
+#include "btstack_run_loop.h"
+#include "btstack_debug.h"
 #include "btstack_memory.h"
 #include "hci.h"
 #include "hci_dump.h"
@@ -1603,7 +1603,7 @@ static void ui_process_command(char buffer){
     }
 }
 
-static int stdin_process(struct data_source *ds){
+static int stdin_process(struct btstack_data_source *ds){
     char buffer;
     read(ds->fd, &buffer, 1);
 

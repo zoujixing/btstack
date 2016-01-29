@@ -45,7 +45,8 @@
  *
  */
 
-#include "btstack-config.h"
+#include "btstack_config.h"
+#include "btstack_control_iphone.h"
 
 #define SOCKET_DEVICE "com.apple.uart.bluetooth"
 #include <sys/socket.h>
@@ -78,17 +79,17 @@
 #include <string.h>
 #include <pthread.h> 
 
-#include "debug.h"
+#include "btstack_debug.h"
 #include "hci.h"
 #include "hci_transport.h"
 
-static int  h4_process(struct data_source *ds);
+static int  h4_process(struct btstack_data_source *ds);
 static void dummy_handler(uint8_t packet_type, uint8_t *packet, uint16_t size); 
 static      hci_transport_config_uart_t *hci_transport_config_uart;
 
 static void h4_enforce_wake_on(void);
 static void h4_enforce_wake_off(void);
-static void h4_enforce_wake_timeout(struct timer *ts);
+static void h4_enforce_wake_timeout(struct btstack_timer_source *ts);
 
 typedef enum {
     H4_W4_PACKET_TYPE,
@@ -99,10 +100,10 @@ typedef enum {
 
 typedef struct hci_transport_h4 {
     hci_transport_t transport;
-    data_source_t *ds;
+    btstack_data_source_t *ds;
     int uart_fd;    // different from ds->fd for HCI reader thread
     /* power management support, e.g. used by iOS */
-    timer_source_t sleep_timer;
+    btstack_timer_source_t sleep_timer;
 } hci_transport_h4_t;
 
 
@@ -132,10 +133,21 @@ static int read_pos;
 
 static uint8_t hci_packet[1+HCI_PACKET_BUFFER_SIZE]; // packet type + max(acl header + acl payload, event header + event data)
 
-static int h4_open(void *transport_config)
-{
-    hci_transport_config_uart = (hci_transport_config_uart_t *) transport_config;
+static void h4_init(const void * transport_config){
+    // check for hci_transport_config_uart_t
+    if (!transport_config) {
+        log_error("hci_transport_h4_posix: no config!");
+        return;
+    }
+    if (((hci_transport_config_t*)transport_config)->type != HCI_TRANSPORT_CONFIG_UART) {
+        log_error("hci_transport_h4_posix: config not of type != HCI_TRANSPORT_CONFIG_UART!");
+        return;
+    }
+    hci_transport_config_uart = (hci_transport_config_uart_t*) transport_config;
+}
 
+static int h4_open(void)
+{
     int fd = socket(PF_NETGRAPH, SOCK_STREAM, NG_CONTROL);
     log_info("h4_open: open socket(%u, %u, %u) %d", PF_NETGRAPH, SOCK_STREAM, NG_CONTROL, fd);
     if (fd < 0) {
@@ -186,6 +198,12 @@ static int h4_open(void *transport_config)
         goto err_out3;
     }
 
+    uint32_t baud = hci_transport_config_uart->baudrate_init;
+    // if baud == 0, we're using system default: set in transport config
+    if (baud == 0) {
+        baud = btstack_control_iphone_get_transport_speed();
+    }
+
     // make raw and set speed
     cfmakeraw(&toptions);
     speed_t brate = (speed_t) hci_transport_config_uart->baudrate_init;
@@ -202,13 +220,13 @@ static int h4_open(void *transport_config)
     }
         
     // set up data_source
-    hci_transport_h4->ds = malloc(sizeof(data_source_t));
+    hci_transport_h4->ds = malloc(sizeof(btstack_data_source_t));
     if (!hci_transport_h4->ds) return -1;
     hci_transport_h4->uart_fd = fd;
     
     hci_transport_h4->ds->fd = fd;
     hci_transport_h4->ds->process = h4_process;
-    run_loop_add_data_source(hci_transport_h4->ds);
+    btstack_run_loop_add_data_source(hci_transport_h4->ds);
     
     // init state machine
     bytes_to_read = 1;
@@ -228,9 +246,9 @@ err_out0:
     return -1;
 }
 
-static int    h4_close(void *transport_config){
+static int h4_close(){
     // first remove run loop handler
-	run_loop_remove_data_source(hci_transport_h4->ds);
+	btstack_run_loop_remove_data_source(hci_transport_h4->ds);
     
     // close device 
     close(hci_transport_h4->ds->fd);
@@ -317,7 +335,7 @@ static void h4_statemachine(void){
     }
 }
 
-static int    h4_process(struct data_source *ds) {
+static int    h4_process(struct btstack_data_source *ds) {
     if (hci_transport_h4->uart_fd == 0) return -1;
 
     int read_now = bytes_to_read;
@@ -338,23 +356,23 @@ static int    h4_process(struct data_source *ds) {
     return 0;
 }
 
-static void h4_enforce_wake_on(void)
-{
+static void h4_enforce_wake_on(void){
+
     if (!enforce_wake_device) return;
     
     if (!enforce_wake_fd) {
         enforce_wake_fd = open(enforce_wake_device, O_RDWR);
         usleep(HCI_WAKE_DURATION);  // wait until device is ready
     }
-    run_loop_remove_timer(&hci_transport_h4->sleep_timer);
-    run_loop_set_timer(&hci_transport_h4->sleep_timer, HCI_WAKE_TIMER_MS);
+    btstack_run_loop_remove_timer(&hci_transport_h4->sleep_timer);
+    btstack_run_loop_set_timer(&hci_transport_h4->sleep_timer, HCI_WAKE_TIMER_MS);
     hci_transport_h4->sleep_timer.process = h4_enforce_wake_timeout;
-    run_loop_add_timer(&hci_transport_h4->sleep_timer); 
+    btstack_run_loop_add_timer(&hci_transport_h4->sleep_timer); 
 }
 
-static void h4_enforce_wake_off(void)
-{
-    run_loop_remove_timer(&hci_transport_h4->sleep_timer);
+static void h4_enforce_wake_off(void){
+
+    btstack_run_loop_remove_timer(&hci_transport_h4->sleep_timer);
     
     if (enforce_wake_fd) {
         close(enforce_wake_fd);
@@ -362,32 +380,29 @@ static void h4_enforce_wake_off(void)
     }
 }
 
-static void h4_enforce_wake_timeout(struct timer *ts)
-{
+static void h4_enforce_wake_timeout(struct btstack_timer_source *ts){
     h4_enforce_wake_off();
-}
-
-static const char * h4_get_transport_name(void){
-    return "H4_IPHONE";
 }
 
 static void dummy_handler(uint8_t packet_type, uint8_t *packet, uint16_t size){
 }
 
 // get h4 singleton
-hci_transport_t * hci_transport_h4_iphone_instance(void){
+const hci_transport_t * hci_transport_h4_instance() {
     if (hci_transport_h4 == NULL) {
-        hci_transport_h4 = malloc( sizeof(hci_transport_h4_t));
+        hci_transport_h4 = (hci_transport_h4_t*)malloc( sizeof(hci_transport_h4_t));
+        memset(hci_transport_h4, 0, sizeof(hci_transport_h4_t));
         hci_transport_h4->ds                                      = NULL;
+        hci_transport_h4->transport.name                          = "H4_IPHONE";
+        hci_transport_h4->transport.init                          = h4_init;
         hci_transport_h4->transport.open                          = h4_open;
         hci_transport_h4->transport.close                         = h4_close;
-        hci_transport_h4->transport.send_packet                   = h4_send_packet;
         hci_transport_h4->transport.register_packet_handler       = h4_register_packet_handler;
-        hci_transport_h4->transport.get_transport_name            = h4_get_transport_name;
-        hci_transport_h4->transport.set_baudrate                  = NULL;
         hci_transport_h4->transport.can_send_packet_now           = NULL;
+        hci_transport_h4->transport.send_packet                   = h4_send_packet;
+        hci_transport_h4->transport.set_baudrate                  = NULL;
     }
-    return (hci_transport_t *) hci_transport_h4;
+    return (const hci_transport_t *) hci_transport_h4;
 }
 
 void hci_transport_h4_iphone_set_enforce_wake_device(char *path){

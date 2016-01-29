@@ -54,12 +54,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
-#include "run_loop.h"
+#include "btstack_run_loop.h"
 #include "classic/sdp_util.h"
 
-#include "debug.h"
+#include "btstack_debug.h"
 #include "btstack_memory.h"
 #include "hci.h"
 #include "hci_dump.h"
@@ -139,14 +139,14 @@ static uint32_t test_data_sent;
 static uint32_t test_data_start;
 
 static void test_reset(void){
-    test_data_start = run_loop_get_time_ms();
+    test_data_start = btstack_run_loop_get_time_ms();
     test_data_sent = 0;
 }
 
 static void test_track_sent(int bytes_sent){
     test_data_sent += test_data_len;
     // evaluate
-    uint32_t now = run_loop_get_time_ms();
+    uint32_t now = btstack_run_loop_get_time_ms();
     uint32_t time_passed = now - test_data_start;
     if (time_passed < REPORT_INTERVAL_MS) return;
     // print speed
@@ -210,7 +210,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 static void streamer(void){
     // check if we can send
     if (!le_notification_enabled) return;
-    if (!att_server_can_send()) return;
+    if (!att_server_can_send_packet_now()) return;
 
     // create test data
     int i;

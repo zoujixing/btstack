@@ -42,7 +42,7 @@
 #ifndef __RFCOMM_H
 #define __RFCOMM_H
  
-#include "utils.h"
+#include "btstack_util.h"
 
 #include <stdint.h>
 
@@ -173,7 +173,7 @@ typedef struct rfcomm_channel_event_msc {
 // info regarding potential connections
 typedef struct {
     // linked list - assert: first field
-    linked_item_t    item;
+    btstack_linked_item_t    item;
 	
     // server channel
     uint8_t server_channel;
@@ -196,9 +196,9 @@ typedef struct {
 // note: spec mandates single multiplexer per device combination
 typedef struct {
     // linked list - assert: first field
-    linked_item_t    item;
+    btstack_linked_item_t    item;
     
-    timer_source_t   timer;
+    btstack_timer_source_t   timer;
     int              timer_active;
     
 	RFCOMM_MULTIPLEXER_STATE state;	
@@ -232,7 +232,7 @@ typedef struct {
 // info regarding an actual connection
 typedef struct {
     // linked list - assert: first field
-    linked_item_t    item;
+    btstack_linked_item_t    item;
 	
 	rfcomm_multiplexer_t *multiplexer;
 	uint16_t rfcomm_cid;
@@ -321,7 +321,7 @@ uint8_t rfcomm_create_channel_with_initial_credits(bd_addr_t addr, uint8_t serve
 /** 
  * @brief Disconnects RFCOMM channel with given identifier. 
  */
-void rfcomm_disconnect_internal(uint16_t rfcomm_cid);
+void rfcomm_disconnect(uint16_t rfcomm_cid);
 
 /** 
  * @brief Registers RFCOMM service for a server channel and a maximum frame size, and assigns a packet handler. On embedded systems, use NULL for connection parameter. This channel provides automatically enough credits to the remote side.
@@ -339,10 +339,14 @@ uint8_t rfcomm_register_service_with_initial_credits(uint8_t channel, uint16_t m
 void rfcomm_unregister_service(uint8_t service_channel);
 
 /** 
- * @brief Accepts/Deny incoming RFCOMM connection.
+ * @brief Accepts incoming RFCOMM connection.
  */
-void rfcomm_accept_connection_internal(uint16_t rfcomm_cid);
-void rfcomm_decline_connection_internal(uint16_t rfcomm_cid);
+void rfcomm_accept_connection(uint16_t rfcomm_cid);
+
+/** 
+ * @brief Deny incoming RFCOMM connection.
+ */
+void rfcomm_decline_connection(uint16_t rfcomm_cid);
 
 /** 
  * @brief Grant more incoming credits to the remote side for the given RFCOMM channel identifier.
@@ -357,7 +361,7 @@ int rfcomm_can_send_packet_now(uint16_t rfcomm_cid);
 /** 
  * @brief Sends RFCOMM data packet to the RFCOMM channel with given identifier.
  */
-int  rfcomm_send_internal(uint16_t rfcomm_cid, uint8_t *data, uint16_t len);
+int  rfcomm_send(uint16_t rfcomm_cid, uint8_t *data, uint16_t len);
 
 /** 
  * @brief Sends Local Line Status, see LINE_STATUS_..
@@ -380,13 +384,24 @@ int rfcomm_send_port_configuration(uint16_t rfcomm_cid, rpn_baud_t baud_rate, rp
 int rfcomm_query_port_configuration(uint16_t rfcomm_cid);
 
 /** 
+ * @brief Query max frame size
+ */
+uint16_t  rfcomm_get_max_frame_size(uint16_t rfcomm_cid);
+
+/** 
  * @brief Allow to create RFCOMM packet in outgoing buffer.
+ * if (rfcomm_can_send_packet_now(cid)){
+ *     rfcomm_reserve_packet_buffer();
+ *     uint8_t * buffer = rfcomm_get_outgoing_buffer();
+ *     uint16_t buffer_size = rfcomm_get_max_frame_size(cid);
+ *     // .. setup data in buffer with len
+ *     rfcomm_send_prepared(cid, len)
+ * }
  */
 int       rfcomm_reserve_packet_buffer(void);
-void      rfcomm_release_packet_buffer(void);
 uint8_t * rfcomm_get_outgoing_buffer(void);
-uint16_t  rfcomm_get_max_frame_size(uint16_t rfcomm_cid);
 int       rfcomm_send_prepared(uint16_t rfcomm_cid, uint16_t len);
+void      rfcomm_release_packet_buffer(void);
 /* API_END */
 
 #if defined __cplusplus

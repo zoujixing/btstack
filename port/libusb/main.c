@@ -47,13 +47,13 @@
 #include <string.h>
 #include <signal.h>
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
-#include "run_loop.h"
-#include "run_loop_posix.h"
+#include "btstack_run_loop.h"
+#include "btstack_run_loop_posix.h"
 #include "hal_led.h"
 
-#include "debug.h"
+#include "btstack_debug.h"
 #include "btstack_memory.h"
 #include "hci.h"
 #include "hci_dump.h"
@@ -85,18 +85,15 @@ int main(int argc, const char * argv[]){
 
 	/// GET STARTED with BTstack ///
 	btstack_memory_init();
-    run_loop_init(run_loop_posix_get_instance());
+    btstack_run_loop_init(btstack_run_loop_posix_get_instance());
 	    
     // use logger: format HCI_DUMP_PACKETLOGGER, HCI_DUMP_BLUEZ or HCI_DUMP_STDOUT
     hci_dump_open("/tmp/hci_dump.pklg", HCI_DUMP_PACKETLOGGER);
 
     // init HCI
-	hci_transport_t    * transport = hci_transport_usb_instance();
-    void               * config = NULL;
-	bt_control_t       * control   = NULL;
+	const hci_transport_t * transport = hci_transport_usb_instance();
     remote_device_db_t * remote_db = (remote_device_db_t *) &remote_device_db_fs;
-        
-	hci_init(transport, config, control, remote_db);
+	hci_init(transport, NULL, remote_db);
     
     // handle CTRL-c
     signal(SIGINT, sigint_handler);
@@ -105,7 +102,7 @@ int main(int argc, const char * argv[]){
     btstack_main(argc, argv);
 
     // go
-    run_loop_execute();    
+    btstack_run_loop_execute();    
 
     return 0;
 }

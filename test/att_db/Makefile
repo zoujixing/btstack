@@ -13,10 +13,10 @@ LDFLAGS += -lCppUTest -lCppUTestExt
 
 VPATH += ${BTSTACK_ROOT}/src
 VPATH += ${BTSTACK_ROOT}/src/ble
-VPATH += ${BTSTACK_ROOT}/platform/posix/src
+VPATH += ${BTSTACK_ROOT}/platform/posix
 
 COMMON = \
-    utils.c		  \
+    btstack_util.c		  \
     hci_dump.c    \
     att_db_util.c \
 	

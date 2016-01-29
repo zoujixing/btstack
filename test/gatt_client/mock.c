@@ -14,7 +14,7 @@
 static btstack_packet_handler_t att_packet_handler;
 static void (*registered_l2cap_packet_handler) (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size) = NULL;
 
-static bk_linked_list_t     connections;
+static btstack_linked_list_t     connections;
 static const uint16_t max_mtu = 23;
 static uint8_t  l2cap_stack_buffer[HCI_INCOMING_PRE_BUFFER_SIZE + 8 + max_mtu];	// pre buffer + HCI Header + L2CAP header
 uint16_t gatt_client_handle = 0x40;
@@ -123,18 +123,18 @@ int sm_le_device_index(uint16_t handle ){
 	return -1;
 }
 
-void run_loop_set_timer(timer_source_t *a, uint32_t timeout_in_ms){
+void btstack_run_loop_set_timer(btstack_timer_source_t *a, uint32_t timeout_in_ms){
 }
 
 // Set callback that will be executed when timer expires.
-void run_loop_set_timer_handler(timer_source_t *ts, void (*process)(timer_source_t *_ts)){
+void btstack_run_loop_set_timer_handler(btstack_timer_source_t *ts, void (*process)(btstack_timer_source_t *_ts)){
 }
 
 // Add/Remove timer source.
-void run_loop_add_timer(timer_source_t *timer){
+void btstack_run_loop_add_timer(btstack_timer_source_t *timer){
 }
 
-int  run_loop_remove_timer(timer_source_t *timer){
+int  btstack_run_loop_remove_timer(btstack_timer_source_t *timer){
 	return 1;
 }
 
@@ -147,9 +147,9 @@ hci_connection_t * hci_connection_for_handle(hci_con_handle_t con_handle){
 	printf("hci_connection_for_handle not implemented in mock backend\n");
 	return NULL;
 }
-void hci_connections_get_iterator(linked_list_iterator_t *it){
+void hci_connections_get_iterator(btstack_linked_list_iterator_t *it){
 	// printf("hci_connections_get_iterator not implemented in mock backend\n");
-    linked_list_iterator_init(it, &connections);
+    btstack_linked_list_iterator_init(it, &connections);
 }
 
 // int hci_send_cmd(const hci_cmd_t *cmd, ...){

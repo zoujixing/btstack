@@ -47,10 +47,10 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
-#include "run_loop.h"
-#include "debug.h"
+#include "btstack_run_loop.h"
+#include "btstack_debug.h"
 #include "btstack_memory.h"
 #include "hci.h"
 #include "hci_dump.h"
@@ -110,7 +110,7 @@ static bd_addr_t master_address;
 static int ui_passkey = 0;
 static int ui_digits_for_passkey = 0;
 
-static timer_source_t heartbeat;
+static btstack_timer_source_t heartbeat;
 static uint8_t counter = 0;
 static int update_client = 0;
 static int client_configuration = 0;
@@ -262,10 +262,10 @@ static int att_attribute_for_handle(uint16_t aHandle){
 }
 
 
-static void  heartbeat_handler(struct timer *ts){
+static void  heartbeat_handler(struct btstack_timer_source *ts){
     // restart timer
-    run_loop_set_timer(ts, HEARTBEAT_PERIOD_MS);
-    run_loop_add_timer(ts);
+    btstack_run_loop_set_timer(ts, HEARTBEAT_PERIOD_MS);
+    btstack_run_loop_add_timer(ts);
 
     counter++;
     update_client = 1;
@@ -274,7 +274,7 @@ static void  heartbeat_handler(struct timer *ts){
 
 static void app_run(void){
     if (!update_client) return;
-    if (!att_server_can_send()) return;
+    if (!att_server_can_send_packet_now()) return;
 
     int result = -1;
     switch (client_configuration){
@@ -711,7 +711,7 @@ static void update_auth_req(void){
     sm_set_authentication_requirements(auth_req);
 }
 
-static int stdin_process(struct data_source *ds){
+static int stdin_process(struct btstack_data_source *ds){
     char buffer;
     read(ds->fd, &buffer, 1);
 
@@ -977,8 +977,8 @@ int btstack_main(int argc, const char * argv[]){
 
     // set one-shot timer
     heartbeat.process = &heartbeat_handler;
-    run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
-    run_loop_add_timer(&heartbeat);
+    btstack_run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
+    btstack_run_loop_add_timer(&heartbeat);
 
     // turn on!
     hci_power_control(HCI_POWER_ON);

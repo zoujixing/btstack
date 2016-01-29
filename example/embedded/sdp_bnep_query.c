@@ -44,15 +44,15 @@
  */
 // *****************************************************************************
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "hci_cmds.h"
-#include "run_loop.h"
+#include "hci_cmd.h"
+#include "btstack_run_loop.h"
 #include "classic/sdp_util.h"
 
 #include "hci.h"

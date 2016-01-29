@@ -38,9 +38,9 @@
 #define __SDP_H
 
 #include <stdint.h>
-#include "bk_linked_list.h"
+#include "btstack_linked_list.h"
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #if defined __cplusplus
 extern "C" {
@@ -48,7 +48,7 @@ extern "C" {
     
 typedef struct {
     // linked list - assert: first field
-    linked_item_t   item;
+    btstack_linked_item_t   item;
 
     uint32_t        service_record_handle;
     uint8_t *       service_record;

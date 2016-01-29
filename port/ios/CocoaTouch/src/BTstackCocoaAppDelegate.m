@@ -45,9 +45,9 @@
 #include <strings.h>
 
 #include "btstack_client.h"
-#include "run_loop.h"
-#include "run_loop_cocoa.h"
-#include "hci_cmds.h"
+#include "btstack_run_loop.h"
+#include "btstack_run_loop_cocoa.h"
+#include "hci_cmd.h"
 
 void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
 }
@@ -71,7 +71,7 @@ void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint
 	[window makeKeyAndVisible];
 	
 	// start Bluetooth
-	run_loop_init(run_loop_cocoa_get_instance());
+	btstack_run_loop_init(btstack_run_loop_cocoa_get_instance());
 
 	int res = bt_open();
 	if (res){

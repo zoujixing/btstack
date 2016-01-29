@@ -39,10 +39,10 @@
 #include <string.h>
 #include <inttypes.h>
 
-#include "bk_linked_list.h"
+#include "btstack_linked_list.h"
 
 #include "btstack_memory.h"
-#include "debug.h"
+#include "btstack_debug.h"
 #include "hci.h"
 #include "l2cap.h"
 #include "ble/le_device_db.h"
@@ -164,7 +164,7 @@ static uint8_t   sm_address_resolution_addr_type;
 static bd_addr_t sm_address_resolution_address;
 static void *    sm_address_resolution_context;
 static address_resolution_mode_t sm_address_resolution_mode;
-static bk_linked_list_t sm_address_resolution_general_queue;
+static btstack_linked_list_t sm_address_resolution_general_queue;
 
 // aes128 crypto engine. store current sm_connection_t in sm_aes128_context
 static sm_aes128_state_t  sm_aes128_state;
@@ -183,7 +183,7 @@ static void * sm_random_context;
 // data needed for security setup
 typedef struct sm_setup_context {
 
-    timer_source_t sm_timeout;
+    btstack_timer_source_t sm_timeout;
 
     // used in all phases
     uint8_t   sm_pairing_failed_reason;
@@ -309,9 +309,9 @@ static void sm_truncate_key(sm_key_t key, int max_encryption_size){
 // Security Manager Channel. A new SM procedure shall only be performed when a new physical link has been
 // established.
 
-static void sm_timeout_handler(timer_source_t * timer){
+static void sm_timeout_handler(btstack_timer_source_t * timer){
     log_info("SM timeout");
-    sm_connection_t * sm_conn = (sm_connection_t *) linked_item_get_user((linked_item_t*) timer);
+    sm_connection_t * sm_conn = (sm_connection_t *) btstack_linked_item_get_user((btstack_linked_item_t*) timer);
     sm_conn->sm_engine_state = SM_GENERAL_TIMEOUT;
     sm_done_for_handle(sm_conn->sm_handle);
 
@@ -319,14 +319,14 @@ static void sm_timeout_handler(timer_source_t * timer){
     sm_run();
 }
 static void sm_timeout_start(sm_connection_t * sm_conn){
-    run_loop_remove_timer(&setup->sm_timeout);
-    run_loop_set_timer_handler(&setup->sm_timeout, sm_timeout_handler);
-    run_loop_set_timer(&setup->sm_timeout, 30000); // 30 seconds sm timeout
-    linked_item_set_user((linked_item_t*) &setup->sm_timeout, sm_conn);
-    run_loop_add_timer(&setup->sm_timeout);
+    btstack_run_loop_remove_timer(&setup->sm_timeout);
+    btstack_run_loop_set_timer_handler(&setup->sm_timeout, sm_timeout_handler);
+    btstack_run_loop_set_timer(&setup->sm_timeout, 30000); // 30 seconds sm timeout
+    btstack_linked_item_set_user((btstack_linked_item_t*) &setup->sm_timeout, sm_conn);
+    btstack_run_loop_add_timer(&setup->sm_timeout);
 }
 static void sm_timeout_stop(void){
-    run_loop_remove_timer(&setup->sm_timeout);
+    btstack_run_loop_remove_timer(&setup->sm_timeout);
 }
 static void sm_timeout_reset(sm_connection_t * sm_conn){
     sm_timeout_stop();
@@ -337,7 +337,7 @@ static void sm_timeout_reset(sm_connection_t * sm_conn){
 
 // GAP Random Address updates
 static gap_random_address_type_t gap_random_adress_type;
-static timer_source_t gap_random_address_update_timer; 
+static btstack_timer_source_t gap_random_address_update_timer; 
 static uint32_t gap_random_adress_update_period;
 
 static void gap_random_address_trigger(void){
@@ -347,21 +347,21 @@ static void gap_random_address_trigger(void){
     sm_run();
 }
 
-static void gap_random_address_update_handler(timer_source_t * timer){
+static void gap_random_address_update_handler(btstack_timer_source_t * timer){
     log_info("GAP Random Address Update due");
-    run_loop_set_timer(&gap_random_address_update_timer, gap_random_adress_update_period);
-    run_loop_add_timer(&gap_random_address_update_timer);
+    btstack_run_loop_set_timer(&gap_random_address_update_timer, gap_random_adress_update_period);
+    btstack_run_loop_add_timer(&gap_random_address_update_timer);
     gap_random_address_trigger();
 }
 
 static void gap_random_address_update_start(void){
-    run_loop_set_timer_handler(&gap_random_address_update_timer, gap_random_address_update_handler);
-    run_loop_set_timer(&gap_random_address_update_timer, gap_random_adress_update_period);
-    run_loop_add_timer(&gap_random_address_update_timer);
+    btstack_run_loop_set_timer_handler(&gap_random_address_update_timer, gap_random_address_update_handler);
+    btstack_run_loop_set_timer(&gap_random_address_update_timer, gap_random_adress_update_period);
+    btstack_run_loop_add_timer(&gap_random_address_update_timer);
 }
 
 static void gap_random_address_update_stop(void){
-    run_loop_remove_timer(&gap_random_address_update_timer);
+    btstack_run_loop_remove_timer(&gap_random_address_update_timer);
 }
 
 
@@ -587,11 +587,11 @@ static void sm_address_resolution_start_lookup(uint8_t addr_type, uint16_t handl
 
 int sm_address_resolution_lookup(uint8_t address_type, bd_addr_t address){
     // check if already in list
-    linked_list_iterator_t it;
+    btstack_linked_list_iterator_t it;
     sm_lookup_entry_t * entry;
-    linked_list_iterator_init(&it, &sm_address_resolution_general_queue);
-    while(linked_list_iterator_has_next(&it)){
-        entry = (sm_lookup_entry_t *) linked_list_iterator_next(&it);
+    btstack_linked_list_iterator_init(&it, &sm_address_resolution_general_queue);
+    while(btstack_linked_list_iterator_has_next(&it)){
+        entry = (sm_lookup_entry_t *) btstack_linked_list_iterator_next(&it);
         if (entry->address_type != address_type) continue;
         if (memcmp(entry->address, address, 6))  continue;
         // already in list
@@ -601,7 +601,7 @@ int sm_address_resolution_lookup(uint8_t address_type, bd_addr_t address){
     if (!entry) return BTSTACK_MEMORY_ALLOC_FAILED;
     entry->address_type = (bd_addr_type_t) address_type;
     memcpy(entry->address, address, 6);
-    linked_list_add(&sm_address_resolution_general_queue, (linked_item_t *) entry);    
+    btstack_linked_list_add(&sm_address_resolution_general_queue, (btstack_linked_item_t *) entry);    
     sm_run();
     return 0;
 }
@@ -1057,7 +1057,7 @@ static void sm_key_distribution_handle_all_received(sm_connection_t * sm_conn){
 
 static void sm_run(void){
 
-    linked_list_iterator_t it;    
+    btstack_linked_list_iterator_t it;    
 
     // assert that we can send at least commands
     if (!hci_can_send_command_packet_now()) return;
@@ -1136,8 +1136,8 @@ static void sm_run(void){
     // -- if csrk lookup ready, find connection that require csrk lookup
     if (sm_address_resolution_idle()){
         hci_connections_get_iterator(&it);
-        while(linked_list_iterator_has_next(&it)){
-            hci_connection_t * hci_connection = (hci_connection_t *) linked_list_iterator_next(&it);
+        while(btstack_linked_list_iterator_has_next(&it)){
+            hci_connection_t * hci_connection = (hci_connection_t *) btstack_linked_list_iterator_next(&it);
             sm_connection_t  * sm_connection  = &hci_connection->sm_connection;
             if (sm_connection->sm_irk_lookup_state == IRK_LOOKUP_W4_READY){
                 // and start lookup
@@ -1150,9 +1150,9 @@ static void sm_run(void){
 
     // -- if csrk lookup ready, resolved addresses for received addresses
     if (sm_address_resolution_idle()) {
-        if (!linked_list_empty(&sm_address_resolution_general_queue)){
+        if (!btstack_linked_list_empty(&sm_address_resolution_general_queue)){
             sm_lookup_entry_t * entry = (sm_lookup_entry_t *) sm_address_resolution_general_queue;
-            linked_list_remove(&sm_address_resolution_general_queue, (linked_item_t *) entry);
+            btstack_linked_list_remove(&sm_address_resolution_general_queue, (btstack_linked_item_t *) entry);
             sm_address_resolution_start_lookup(entry->address_type, 0, entry->address, ADDRESS_RESOLUTION_GENERAL, NULL);
             btstack_memory_sm_lookup_entry_free(entry);
         }
@@ -1206,8 +1206,8 @@ static void sm_run(void){
 
         // Find connections that requires setup context and make active if no other is locked
         hci_connections_get_iterator(&it);
-        while(!sm_active_connection && linked_list_iterator_has_next(&it)){
-            hci_connection_t * hci_connection = (hci_connection_t *) linked_list_iterator_next(&it);
+        while(!sm_active_connection && btstack_linked_list_iterator_has_next(&it)){
+            hci_connection_t * hci_connection = (hci_connection_t *) btstack_linked_list_iterator_next(&it);
             sm_connection_t  * sm_connection = &hci_connection->sm_connection;
             // - if no connection locked and we're ready/waiting for setup context, fetch it and start
             int done = 1;
@@ -2514,6 +2514,13 @@ void gap_random_address_set_update_period(int period_ms){
     if (gap_random_adress_type == GAP_RANDOM_ADDRESS_TYPE_OFF) return;
     gap_random_address_update_stop();
     gap_random_address_update_start();
+}
+
+void gap_random_address_set(bd_addr_t addr){
+    gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_OFF);
+    memcpy(sm_random_address, addr, 6);
+    rau_state = RAU_SET_ADDRESS;
+    sm_run();
 }
 
 /*

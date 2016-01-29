@@ -30,12 +30,12 @@ system.
 
 Currently, we have two examples for this:
 
--   *run_loop_cocoa.c* is an implementation for the CoreFoundation
+-   *btstack_run_loop_cocoa.c* is an implementation for the CoreFoundation
     Framework used in OS X and iOS. All run loop functions are
     implemented in terms of CoreFoundation calls, data sources and
     timers are modeled as CFSockets and CFRunLoopTimer respectively.
 
--   *run_loop_posix.c* is an implementation for POSIX compliant
+-   *btstack_run_loop_posix.c* is an implementation for POSIX compliant
     systems. The data sources are modeled as file descriptors and
     managed in a linked list. Then, the*select* function is used to wait
     for the next file descriptor to become ready or timer to expire.

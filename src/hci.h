@@ -45,15 +45,15 @@
 #ifndef __HCI_H
 #define __HCI_H
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
-
-#include "bt_control.h"
+#include "btstack_chipset.h"
+#include "btstack_control.h"
+#include "btstack_linked_list.h"
+#include "btstack_util.h"
 #include "classic/remote_device_db.h"
-#include "hci_cmds.h"
+#include "hci_cmd.h"
 #include "hci_transport.h"
-#include "bk_linked_list.h"
-#include "utils.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -65,7 +65,8 @@ extern "C" {
      
 // packet buffer sizes
 // HCI_ACL_PAYLOAD_SIZE is configurable and defined in config.h
-#define HCI_EVENT_BUFFER_SIZE      (HCI_EVENT_HEADER_SIZE + HCI_EVENT_PAYLOAD_SIZE)
+// addition byte in even to terminate remote name request with '\0'
+#define HCI_EVENT_BUFFER_SIZE      (HCI_EVENT_HEADER_SIZE + HCI_EVENT_PAYLOAD_SIZE + 1)
 #define HCI_CMD_BUFFER_SIZE        (HCI_CMD_HEADER_SIZE   + HCI_CMD_PAYLOAD_SIZE)
 #define HCI_ACL_BUFFER_SIZE        (HCI_ACL_HEADER_SIZE   + HCI_ACL_PAYLOAD_SIZE)
     
@@ -347,7 +348,7 @@ typedef struct sm_connection {
 
 typedef struct {
     // linked list - assert: first field
-    linked_item_t    item;
+    btstack_linked_item_t    item;
     
     // remote side
     bd_addr_t address;
@@ -379,7 +380,7 @@ typedef struct {
     // errands
     uint32_t authentication_flags;
 
-    timer_source_t timeout;
+    btstack_timer_source_t timeout;
     
 #ifdef HAVE_TIME
     // timer
@@ -409,7 +410,7 @@ typedef struct {
     uint16_t le_conn_latency;
     uint16_t le_supervision_timeout;
 
-#ifdef HAVE_BLE
+#ifdef ENABLE_BLE
     // LE Security Manager
     sm_connection_t sm_connection;
 #endif
@@ -458,15 +459,16 @@ typedef enum hci_init_state{
     HCI_INIT_W4_WRITE_SIMPLE_PAIRING_MODE,
     HCI_INIT_WRITE_PAGE_TIMEOUT,
     HCI_INIT_W4_WRITE_PAGE_TIMEOUT,
-    // HCI_INIT_WRITE_SYNCHRONOUS_FLOW_CONTROL_ENABLE,
-    // HCI_INIT_W4_SYNCHRONOUS_FLOW_CONTROL_ENABLE,
-
     HCI_INIT_WRITE_CLASS_OF_DEVICE,
     HCI_INIT_W4_WRITE_CLASS_OF_DEVICE,
     HCI_INIT_WRITE_LOCAL_NAME,
     HCI_INIT_W4_WRITE_LOCAL_NAME,
     HCI_INIT_WRITE_SCAN_ENABLE,
     HCI_INIT_W4_WRITE_SCAN_ENABLE,
+    
+    HCI_INIT_WRITE_SYNCHRONOUS_FLOW_CONTROL_ENABLE,
+    HCI_INIT_W4_WRITE_SYNCHRONOUS_FLOW_CONTROL_ENABLE,
+
     HCI_INIT_LE_READ_BUFFER_SIZE,
     HCI_INIT_W4_LE_READ_BUFFER_SIZE,
     HCI_INIT_WRITE_LE_HOST_SUPPORTED,
@@ -501,7 +503,7 @@ enum {
 };
 
 typedef struct {
-    linked_item_t  item;
+    btstack_linked_item_t  item;
     bd_addr_t      address;
     bd_addr_type_t address_type;
     uint8_t        state;   
@@ -512,11 +514,17 @@ typedef struct {
  */
 typedef struct {
     // transport component with configuration
-    hci_transport_t  * hci_transport;
-    void             * config;
+    const hci_transport_t * hci_transport;
+    const void            * config;
     
+    // chipset driver
+    const btstack_chipset_t * chipset;
+
+    // hardware power controller
+    const btstack_control_t * control;
+
     // basic configuration
-    const char         * local_name;
+    const char *       local_name;
     uint32_t           class_of_device;
     bd_addr_t          local_bd_addr;
     uint8_t            ssp_enable;
@@ -524,11 +532,9 @@ typedef struct {
     uint8_t            ssp_authentication_requirement;
     uint8_t            ssp_auto_accept;
 
-    // hardware power controller
-    bt_control_t     * control;
     
     // list of existing baseband connections
-    bk_linked_list_t     connections;
+    btstack_linked_list_t     connections;
 
     // single buffer for HCI packet assembly + additional prebuffer for H4 drivers
     uint8_t   hci_packet_buffer_prefix[HCI_OUTGOING_PRE_BUFFER_SIZE];
@@ -577,7 +583,7 @@ typedef struct {
     /* hci state machine */
     HCI_STATE      state;
     hci_substate_t substate;
-    timer_source_t timeout;
+    btstack_timer_source_t timeout;
     uint8_t   cmds_ready;
     
     uint16_t  last_cmd_opcode;
@@ -628,25 +634,27 @@ typedef struct {
 
     // LE Whitelist Management
     uint16_t      le_whitelist_capacity;
-    bk_linked_list_t le_whitelist;
+    btstack_linked_list_t le_whitelist;
 
     // custom BD ADDR
     bd_addr_t custom_bd_addr; 
     uint8_t   custom_bd_addr_set;
 
-    // hardware error handler
+    // hardware error callback
     void (*hardware_error_callback)(void);
+
+    // local version information callback
+    void (*local_version_information_callback)(uint8_t * local_version_information);
 
 } hci_stack_t;
 
 /**
  * set connection iterator
  */
-void hci_connections_get_iterator(linked_list_iterator_t *it);
+void hci_connections_get_iterator(btstack_linked_list_iterator_t *it);
 
 // create and send hci command packets based on a template and a list of parameters
 uint16_t hci_create_cmd(uint8_t *hci_cmd_buffer, hci_cmd_t *cmd, ...);
-uint16_t hci_create_cmd_internal(uint8_t *hci_cmd_buffer, const hci_cmd_t *cmd, va_list argptr);
 
 /**
  * run the hci control loop once
@@ -755,7 +763,17 @@ void hci_local_bd_addr(bd_addr_t address_buffer);
 /**
  * @brief Set up HCI. Needs to be called before any other function.
  */
-void hci_init(hci_transport_t *transport, void *config, bt_control_t *control, remote_device_db_t const* remote_device_db);
+void hci_init(const hci_transport_t *transport, void *config, remote_device_db_t const* remote_device_db);
+
+/**
+ * @brief Configure Bluetooth chipset driver. Has to be called before power on, or right after receiving the local version information.
+ */
+void hci_set_chipset(const btstack_chipset_t *chipset_driver);
+
+/**
+ * @brief Configure Bluetooth hardware control. Has to be called before power on.
+ */
+void hci_set_control(const btstack_control_t *hardware_control);
 
 /**
  * @brief Set class of device that will be set during Bluetooth init.
@@ -825,6 +843,12 @@ void hci_le_advertisement_address(uint8_t * addr_type, bd_addr_t addr);
  */
 void hci_set_hardware_error_callback(void (*fn)(void));
 
+/**
+ * @brief Set callback for local information from Bluetooth controller right after HCI Reset
+ * @note Can be used to select chipset driver dynamically during startup
+ */
+void hci_set_local_version_information_callback(void (*fn)(uint8_t * local_version_information));
+
 /** 
  * @brief Configure Voice Setting for use with SCO data in HSP/HFP
  */
@@ -835,6 +859,12 @@ void hci_set_sco_voice_setting(uint16_t voice_setting);
  * @return current voice setting
  */
 uint16_t hci_get_sco_voice_setting(void);
+
+/** @brief Get SCO packet length for current SCO Voice setting
+ *  @note  Using SCO packets of the exact length is required for USB transfer
+ *  @return Length of SCO packets in bytes (not audio frames) incl. 3 byte header
+ */
+int hci_get_sco_packet_length(void);
 
 /* API_END */
 

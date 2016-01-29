@@ -48,7 +48,7 @@
  * service and initiates a BNEP connection.
  */
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -81,8 +81,8 @@
 #include <linux/if_tun.h>
 #endif
 
-#include "hci_cmds.h"
-#include "run_loop.h"
+#include "hci_cmd.h"
+#include "btstack_run_loop.h"
 #include "classic/sdp_util.h"
 
 #include "hci.h"
@@ -124,7 +124,7 @@ static char tap_dev_name[16] = "bnep%d";
 #endif
 
 
-static data_source_t tap_dev_ds;
+static btstack_data_source_t tap_dev_ds;
 
 /* @section Main application configuration
  *
@@ -269,7 +269,7 @@ static int tap_alloc(char *dev, bd_addr_t bd_addr)
  */
 
 /* LISTING_START(processTapData): Process incoming network packets */
-static int process_tap_dev_data(struct data_source *ds) 
+static int process_tap_dev_data(struct btstack_data_source *ds) 
 {
     ssize_t len;
     len = read(ds->fd, network_buffer, sizeof(network_buffer));
@@ -284,7 +284,7 @@ static int process_tap_dev_data(struct data_source *ds)
         network_buffer_len = 0;
     } else {
         // park the current network packet
-        run_loop_remove_data_source(&tap_dev_ds);
+        btstack_run_loop_remove_data_source(&tap_dev_ds);
     }
     return 0;
 }
@@ -501,7 +501,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
                             /* Create and register a new runloop data source */
                             tap_dev_ds.fd = tap_fd;
                             tap_dev_ds.process = process_tap_dev_data;
-                            run_loop_add_data_source(&tap_dev_ds);
+                            btstack_run_loop_add_data_source(&tap_dev_ds);
                         }
                     }
 					break;
@@ -517,7 +517,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
                  */
                 case BNEP_EVENT_CHANNEL_CLOSED:
                     printf("BNEP channel closed\n");
-                    run_loop_remove_data_source(&tap_dev_ds);
+                    btstack_run_loop_remove_data_source(&tap_dev_ds);
                     if (tap_fd > 0) {
                         close(tap_fd);
                         tap_fd = -1;
@@ -533,7 +533,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
                         bnep_send(bnep_cid, network_buffer, network_buffer_len);
                         network_buffer_len = 0;
                         // Re-add the tap device data source
-                        run_loop_add_data_source(&tap_dev_ds);
+                        btstack_run_loop_add_data_source(&tap_dev_ds);
                     }
                     
                     break;

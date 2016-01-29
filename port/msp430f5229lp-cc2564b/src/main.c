@@ -48,12 +48,12 @@
 
 #include <msp430.h>
 
-#include "bt_control_cc256x.h"
+#include "btstack_chipset_cc256x.h"
 #include "hal_board.h"
 #include "hal_compat.h"
 #include "hal_usb.h"
 
-#include "run_loop.h"
+#include "btstack_run_loop.h"
 #include "hal_tick.h"
 #include "hal_cpu.h"
 
@@ -61,7 +61,7 @@
 #include "hci_dump.h"
 #include "btstack_memory.h"
 #include "classic/remote_device_db.h"
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 static void hw_setup(void){
 
@@ -102,16 +102,16 @@ static void btstack_setup(void){
 
     /// GET STARTED with BTstack ///
     btstack_memory_init();
-    run_loop_init(run_loop_embedded_get_instance());
+    btstack_run_loop_init(btstack_run_loop_embedded_get_instance());
     
     // init HCI
-    hci_transport_t    * transport = hci_transport_h4_dma_instance();
-    bt_control_t       * control   = bt_control_cc256x_instance();
+    const hci_transport_t * transport = hci_transport_h4_instance();
     remote_device_db_t * remote_db = (remote_device_db_t *) &remote_device_db_memory;
-    hci_init(transport, &config, control, remote_db);
+    hci_init(transport, &config, remote_db);
+    hci_set_chipset(btstack_chipset_cc256x_instance());
     
     // use eHCILL
-    // bt_control_cc256x_enable_ehcill(1);    
+    // btstack_chipset_cc256x_enable_ehcill(1);    
 }
 
 int btstack_main(int argc, const char * argv[]);
@@ -126,7 +126,7 @@ int main(void){
     btstack_setup();
     btstack_main(0, NULL);
 
-    run_loop_execute();
+    btstack_run_loop_execute();
     return 0;
 }
 

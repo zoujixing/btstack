@@ -41,7 +41,7 @@
 //
 // *****************************************************************************
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -49,8 +49,8 @@
 #include <string.h>
 
 
-#include "hci_cmds.h"
-#include "run_loop.h"
+#include "hci_cmd.h"
+#include "btstack_run_loop.h"
 
 #include "hci.h"
 #include "btstack_memory.h"
@@ -96,14 +96,14 @@ static void create_test_data(void){
 }
 
 static void send_packet(void){
-    int err = rfcomm_send_internal(rfcomm_cid, (uint8_t*) test_data, test_data_len);
+    int err = rfcomm_send(rfcomm_cid, (uint8_t*) test_data, test_data_len);
     if (err){
-        printf("rfcomm_send_internal -> error 0X%02x", err);
+        printf("rfcomm_send -> error 0X%02x", err);
         return;
     }
     
     if (data_to_send < test_data_len){
-        rfcomm_disconnect_internal(rfcomm_cid);
+        rfcomm_disconnect(rfcomm_cid);
         rfcomm_cid = 0;
         state = DONE;
         printf("SPP Streamer: enough data send, closing DLC\n");

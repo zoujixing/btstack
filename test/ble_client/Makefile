@@ -9,19 +9,19 @@ LDFLAGS += -L$(CPPUTEST_HOME)/lib -lCppUTest -lCppUTestExt
 
 VPATH += ${BTSTACK_ROOT}/src/ble 
 VPATH += ${BTSTACK_ROOT}/src
-VPATH += ${BTSTACK_ROOT}/platform/posix/src
+VPATH += ${BTSTACK_ROOT}/platform/posix
 
 COMMON = \
     ad_parser.c                 \
-    bk_linked_list.c	        \
+    btstack_linked_list.c	    \
     btstack_memory.c			\
+    btstack_memory_pool.c		\
+    btstack_run_loop.c			\
+    btstack_run_loop_posix.c 	\
+    btstack_util.c			    \
     hci.c                       \
-    hci_cmds.c					\
+    hci_cmd.c					\
     hci_dump.c					\
-    memory_pool.c			    \
-    run_loop.c					\
-    run_loop_posix.c 			\
-    utils.c			            \
 	
 COMMON_OBJ = $(COMMON:.c=.o)
 

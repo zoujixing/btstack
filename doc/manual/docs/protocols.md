@@ -90,7 +90,7 @@ In a HCI command packet, the OpCode is followed by parameter total
 length, and the actual parameters. The OpCode of a command can be
 calculated using the OPCODE macro. BTstack provides the *hci_cmd_t*
 struct as a compact format to define HCI command packets, see 
-Listing [below](#lst:HCIcmdTemplate), and [include/btstack/hci_cmds.h]()
+Listing [below](#lst:HCIcmdTemplate), and [include/btstack/hci_cmd.h]()
 file in the source code. 
 
 ~~~~ {#lst:HCIcmdTemplate .c caption="{HCI command struct.}"}
@@ -185,8 +185,8 @@ protocols. Multiple channels can share the same baseband connection.
 To communicate with an L2CAP service on a remote device, the application
 on a local Bluetooth device initiates the L2CAP layer using the
 *l2cap_init* function, and then creates an outgoing L2CAP channel to
-the PSM of a remote device using the *l2cap_create_channel_internal*
-function. The *l2cap_create_channel_internal* function will initiate
+the PSM of a remote device using the *l2cap_create_channel*
+function. The *l2cap_create_channel* function will initiate
 a new baseband connection if it does not already exist. The packet
 handler that is given as an input parameter of the L2CAP create channel
 function will be assigned to the new outgoing L2CAP channel. This
@@ -205,7 +205,7 @@ in Listing [below](#lst:L2CAPremoteService).
     }
 
     void create_outgoing_l2cap_channel(bd_addr_t address, uint16_t psm, uint16_t mtu){
-         l2cap_create_channel_internal(NULL, l2cap_packet_handler, remote_bd_addr, psm, mtu);
+         l2cap_create_channel(NULL, l2cap_packet_handler, remote_bd_addr, psm, mtu);
     }
 
     void l2cap_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
@@ -228,13 +228,13 @@ in Listing [below](#lst:L2CAPremoteService).
 
 To provide an L2CAP service, the application on a local Bluetooth device
 must init the L2CAP layer and register the service with
-*l2cap_register_service_internal*. From there on, it can wait for
+*l2cap_register_service*. From there on, it can wait for
 incoming L2CAP connections. The application can accept or deny an
-incoming connection by calling the *l2cap_accept_connection_internal*
-and *l2cap_deny_connection_internal* functions respectively. If a
+incoming connection by calling the *l2cap_accept_connection*
+and *l2cap_deny_connection* functions respectively. If a
 connection is accepted and the incoming L2CAP channel gets successfully
 opened, the L2CAP service can send L2CAP data packets to the connected
-device with *l2cap_send_internal*.
+device with *l2cap_send*.
 
 Sending of L2CAP data packets may fail due to a full internal BTstack
 outgoing packet buffer, or if the ACL buffers in the Bluetooth module
@@ -252,7 +252,7 @@ provides L2CAP service example code.
     void btstack_setup(){
         ...
         l2cap_init();
-        l2cap_register_service_internal(NULL, packet_handler, 0x11,100);
+        l2cap_register_service(NULL, packet_handler, 0x11,100);
     }
 
     void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
@@ -269,7 +269,7 @@ provides L2CAP service example code.
                 psm        = READ_BT_16(packet, 10); 
                 local_cid  = READ_BT_16(packet, 12); 
                 printf("L2CAP incoming connection requested.");
-                l2cap_accept_connection_internal(local_cid);
+                l2cap_accept_connection(local_cid);
                 break;
             case L2CAP_EVENT_CHANNEL_OPENED:
                 bt_flip_addr(event_addr, &packet[3]);
@@ -334,12 +334,12 @@ To communicate with an RFCOMM service on a remote device, the
 application on a local Bluetooth device initiates the RFCOMM layer using
 the *rfcomm_init* function, and then creates an outgoing RFCOMM channel
 to a given server channel on a remote device using the
-*rfcomm_create_channel_internal* function. The
-*rfcomm_create_channel_internal* function will initiate a new L2CAP
+*rfcomm_create_channel* function. The
+*rfcomm_create_channel* function will initiate a new L2CAP
 connection for the RFCOMM multiplexer, if it does not already exist. The
 channel will automatically provide enough credits to the remote side. To
 provide credits manually, you have to create the RFCOMM connection by
-calling *rfcomm_create_channel_with_initial_credits_internal* -
+calling *rfcomm_create_channel_with_initial_credits* -
 see Section [on manual credit assignement](#sec:manualCreditsProtocols).
 
 The packet handler that is given as an input parameter of the RFCOMM
@@ -358,7 +358,7 @@ Listing [below](#lst:RFCOMMremoteService).
     }
 
     void create_rfcomm_channel(uint8_t packet_type, uint8_t *packet, uint16_t size){
-        rfcomm_create_channel_internal(connection, addr, rfcomm_channel);
+        rfcomm_create_channel(connection, addr, rfcomm_channel);
     }
 
     void rfcomm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
@@ -381,15 +381,15 @@ Listing [below](#lst:RFCOMMremoteService).
 
 To provide an RFCOMM service, the application on a local Bluetooth
 device must first init the L2CAP and RFCOMM layers and then register the
-service with *rfcomm_register_service_internal*. From there on, it
+service with *rfcomm_register_service*. From there on, it
 can wait for incoming RFCOMM connections. The application can accept or
 deny an incoming connection by calling the
-*rfcomm_accept_connection_internal* and
-*rfcomm_deny_connection_internal* functions respectively. If a
+*rfcomm_accept_connection* and
+*rfcomm_deny_connection* functions respectively. If a
 connection is accepted and the incoming RFCOMM channel gets successfully
 opened, the RFCOMM service can send RFCOMM data packets to the connected
-device with *rfcomm_send_internal* and receive data packets by the
-packet handler provided by the *rfcomm_register_service_internal*
+device with *rfcomm_send* and receive data packets by the
+packet handler provided by the *rfcomm_register_service*
 call.
 
 Sending of RFCOMM data packets may fail due to a full internal BTstack
@@ -408,7 +408,7 @@ provides the RFCOMM service example code.
     void btstack_setup(){
         ...
         rfcomm_init();
-        rfcomm_register_service_internal(NULL, rfcomm_channel_nr, mtu); 
+        rfcomm_register_service(NULL, rfcomm_channel_nr, mtu); 
     }
 
     void packet_handler(uint8_t packet_type, uint8_t *packet, uint16_t size){
@@ -424,7 +424,7 @@ provides the RFCOMM service example code.
                 bt_flip_addr(event_addr, &packet[2]); 
                 rfcomm_channel_nr = packet[8];
                 rfcomm_channel_id = READ_BT_16(packet, 9);
-                rfcomm_accept_connection_internal(rfcomm_channel_id);
+                rfcomm_accept_connection(rfcomm_channel_id);
                 break;
             case RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE:
                // data: event(8), len(8), status (8), address (48), handle(16), server channel(8), rfcomm_cid(16), max frame size(16)
@@ -475,9 +475,9 @@ Before sending data packets, check if RFCOMM can send them by calling rfcomm_can
         if (!rfcomm_channel_id) return;
         if (!rfcomm_can_send_packet_now(rfcomm_channel_id)) return;
 
-        int err = rfcomm_send_internal(rfcomm_channel_id,  dataBuffer, dataLen);
+        int err = rfcomm_send(rfcomm_channel_id,  dataBuffer, dataLen);
         if (err) {
-            log_error("rfcomm_send_internal -> error 0X%02x", err);
+            log_error("rfcomm_send -> error 0X%02x", err);
             return;
         }
         // packet is sent prepare next one
@@ -534,7 +534,7 @@ Listing [below](#lst:explicitFlowControl).
         rfcomm_init();
         rfcomm_register_packet_handler(packet_handler);
         // reserved channel, mtu=100, 1 credit
-        rfcomm_register_service_with_initial_credits_internal(NULL, rfcomm_channel_nr, 100, 1);  
+        rfcomm_register_service_with_initial_credits(NULL, rfcomm_channel_nr, 100, 1);  
     }
 ~~~~ 
 
@@ -578,7 +578,7 @@ connection is used. See Listing [below](#lst:automaticFlowControl).
         // init RFCOMM
         rfcomm_init();
         rfcomm_register_packet_handler(packet_handler);
-        rfcomm_register_service_internal(NULL, rfcomm_channel_nr, 100); 
+        rfcomm_register_service(NULL, rfcomm_channel_nr, 100); 
     }
 ~~~~ 
 
@@ -689,7 +689,7 @@ registered callback, as shown in Listing [below](#lst:SDPClientRFCOMM).
         // turn on!
         hci_power_control(HCI_POWER_ON);
         // go!
-        run_loop_execute(); 
+        btstack_run_loop_execute(); 
         return 0;
     }
 ~~~~ 

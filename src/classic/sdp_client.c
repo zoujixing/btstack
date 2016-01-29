@@ -39,15 +39,15 @@
  *  sdp_client.c
  */
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 #include "classic/sdp_client.h"
 
-#include "hci_cmds.h"
+#include "hci_cmd.h"
 
 #include "l2cap.h"
 #include "classic/sdp_parser.h"
 #include "classic/sdp.h"
-#include "debug.h"
+#include "btstack_debug.h"
 
 typedef enum {
     INIT, W4_CONNECT, W2_SEND, W4_RESPONSE, QUERY_COMPLETE
@@ -58,7 +58,7 @@ void sdp_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, 
 
 static uint16_t setup_service_search_attribute_request(uint8_t * data);
 
-#ifdef HAVE_SDP_EXTRA_QUERIES
+#ifdef ENABLE_SDP_EXTRA_QUERIES
 static uint16_t setup_service_search_request(uint8_t * data);
 static uint16_t setup_service_attribute_request(uint8_t * data);
 static void     parse_service_search_response(uint8_t* packet);
@@ -108,7 +108,7 @@ static void send_request(uint16_t channel){
     uint16_t request_len = 0;
 
     switch (PDU_ID){
-#ifdef HAVE_SDP_EXTRA_QUERIES
+#ifdef ENABLE_SDP_EXTRA_QUERIES
         case SDP_ServiceSearchResponse:
             request_len = setup_service_search_request(data);
             break;
@@ -130,16 +130,16 @@ static void send_request(uint16_t channel){
     // l2cap_send_prepared shouldn't have failed as l2ap_can_send_packet_now() was true
     switch (err){
         case 0:
-            log_debug("l2cap_send_internal() -> OK");
+            log_debug("l2cap_send() -> OK");
             PDU_ID = SDP_Invalid;
             break;
         case BTSTACK_ACL_BUFFERS_FULL:
             sdp_client_state = W2_SEND;
-            log_info("l2cap_send_internal() ->BTSTACK_ACL_BUFFERS_FULL");
+            log_info("l2cap_send() ->BTSTACK_ACL_BUFFERS_FULL");
             break;
         default:
             sdp_client_state = W2_SEND;
-            log_error("l2cap_send_internal() -> err %d", err);
+            log_error("l2cap_send() -> err %d", err);
             break;
     }
 }
@@ -197,7 +197,7 @@ void sdp_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, 
         PDU_ID = (SDP_PDU_ID_t)packet[0];
         log_info("SDP Client :: PDU ID. %u ,%u", PDU_ID, packet[0]);
         switch (PDU_ID){
-#ifdef HAVE_SDP_EXTRA_QUERIES
+#ifdef ENABLE_SDP_EXTRA_QUERIES
             case SDP_ServiceSearchResponse:
                 parse_service_search_response(packet);
                 break;
@@ -217,7 +217,7 @@ void sdp_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, 
         if (continuationStateLen == 0){
             log_info("SDP Client Query DONE! ");
             sdp_client_state = QUERY_COMPLETE;
-            l2cap_disconnect_internal(sdp_cid, 0);
+            l2cap_disconnect(sdp_cid, 0);
             // sdp_parser_handle_done(0);
             return;
         }
@@ -311,7 +311,7 @@ static uint16_t setup_service_search_attribute_request(uint8_t * data){
     return offset;
 }
 
-#ifdef HAVE_SDP_EXTRA_QUERIES
+#ifdef ENABLE_SDP_EXTRA_QUERIES
 void parse_service_record_handle_list(uint8_t* packet, uint16_t total_count, uint16_t current_count){
     sdp_parser_handle_service_search(packet, total_count, current_count);
 }

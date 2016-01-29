@@ -43,7 +43,7 @@
  */
 // *****************************************************************************
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -54,8 +54,8 @@
 #include "classic/sdp_client.h"
 #include "classic/sdp_query_util.h"
 
-#include "hci_cmds.h"
-#include "run_loop.h"
+#include "hci_cmd.h"
+#include "btstack_run_loop.h"
 
 #include "hci.h"
 #include "btstack_memory.h"

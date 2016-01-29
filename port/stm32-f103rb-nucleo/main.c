@@ -48,10 +48,10 @@
 #include <errno.h>
 #include <unistd.h>
 
-#include "run_loop.h"
-#include "run_loop_embedded.h"
+#include "btstack_run_loop.h"
+#include "btstack_run_loop_embedded.h"
 #include "hci.h"
-#include "bt_control_cc256x.h"
+#include "btstack_chipset_cc256x.h"
 #include "btstack_memory.h"
 #include "classic/remote_device_db.h"
 
@@ -113,8 +113,8 @@ void sys_tick_handler(void){
 }
 
 static void msleep(uint32_t delay) {
-	uint32_t wake = run_loop_embedded_get_ticks() + delay / hal_tick_get_tick_period_in_ms();
-	while (wake > run_loop_embedded_get_ticks());
+	uint32_t wake = btstack_run_loop_embedded_get_ticks() + delay / hal_tick_get_tick_period_in_ms();
+	while (wake > btstack_run_loop_embedded_get_ticks());
 }
 
 // hal_led.h implementation
@@ -421,22 +421,22 @@ int main(void)
 
 	// start with BTstack init - especially configure HCI Transport
     btstack_memory_init();
-    run_loop_init(run_loop_embedded_get_instance());
+    btstack_run_loop_init(btstack_run_loop_embedded_get_instance());
     
     // init HCI
-    hci_transport_t    * transport = hci_transport_h4_dma_instance();
-    bt_control_t       * control   = bt_control_cc256x_instance();
+    const hci_transport_t * transport = hci_transport_h4_instance();
     remote_device_db_t * remote_db = (remote_device_db_t *) &remote_device_db_memory;
-    hci_init(transport, (void*) &config, control, remote_db);
+    hci_init(transport, (void*) &config, remote_db);
+    hci_set_chipset(btstack_chipset_cc256x_instance());
 
     // enable eHCILL
-    bt_control_cc256x_enable_ehcill(1);
+    btstack_chipset_cc256x_enable_ehcill(1);
 
 	// hand over to btstack embedded code 
     btstack_main();
 
     // go
-    run_loop_execute();
+    btstack_run_loop_execute();
 
 	return 0;
 }

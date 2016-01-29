@@ -41,8 +41,8 @@
 #import "EAGLViewController.h"
 
 #import "btstack.h"
-#import "run_loop.h"
-#import <btstack/hci_cmds.h>
+#import "btstack_run_loop.h"
+#import <btstack/hci_cmd.h>
 
 @interface UIDevice (privateAPI)
 -(BOOL) isWildcat;

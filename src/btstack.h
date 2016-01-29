@@ -44,31 +44,30 @@
 #ifndef __BTSTACK_H
 #define __BTSTACK_H
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include "bluetooth.h"
-#include "bt_control.h"
 #include "btstack.h"
+#include "btstack_control.h"
+#include "btstack_debug.h"
 #include "btstack_defines.h"
+#include "btstack_linked_list.h"
 #include "btstack_memory.h"
-#include "debug.h"
+#include "btstack_memory_pool.h"
+#include "btstack_run_loop.h"
+#include "btstack_util.h"
+#include "btstack_version.h"
 #include "gap.h"
 #include "hci.h"
-#include "hci_cmds.h"
+#include "hci_cmd.h"
 #include "hci_dump.h"
 #include "hci_transport.h"
 #include "l2cap.h"
 #include "l2cap_signaling.h"
-#include "bk_linked_list.h"
-#include "memory_pool.h"
-#include "run_loop.h"
-#include "run_loop_private.h"
-#include "utils.h"
-#include "version.h"
 
-#ifdef HAVE_BLE
+#ifdef ENABLE_BLE
 #include "ble/ad_parser.h"
-#include "ble/ancs_client_lib.h"
+#include "ble/ancs_client.h"
 #include "ble/att.h"
 #include "ble/att_db_util.h"
 #include "ble/att_dispatch.h"

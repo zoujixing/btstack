@@ -50,12 +50,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
-#include "run_loop.h"
+#include "btstack_run_loop.h"
 #include "classic/sdp_util.h"
 
-#include "debug.h"
+#include "btstack_debug.h"
 #include "btstack_memory.h"
 #include "gap.h"
 #include "hci.h"
@@ -84,12 +84,12 @@
  
 /* LISTING_START(MainConfiguration): Init L2CAP SM ATT Server and start heartbeat timer */
 static int  le_notification_enabled;
-static timer_source_t heartbeat;
+static btstack_timer_source_t heartbeat;
 
 static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 static uint16_t att_read_callback(uint16_t con_handle, uint16_t att_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size);
 static int att_write_callback(uint16_t con_handle, uint16_t att_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size);
-static void  heartbeat_handler(struct timer *ts);
+static void  heartbeat_handler(struct btstack_timer_source *ts);
 
 const uint8_t adv_data[] = {
     // Flags general discoverable
@@ -124,8 +124,8 @@ static void le_counter_setup(void){
 
     // set one-shot timer
     heartbeat.process = &heartbeat_handler;
-    run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
-    run_loop_add_timer(&heartbeat);
+    btstack_run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
+    btstack_run_loop_add_timer(&heartbeat);
 }
 /* LISTING_END */
 
@@ -161,15 +161,15 @@ static int  counter = 0;
 static char counter_string[30];
 static int  counter_string_len;
 
-static void  heartbeat_handler(struct timer *ts){
+static void  heartbeat_handler(struct btstack_timer_source *ts){
     if (le_notification_enabled) {
         counter++;
         counter_string_len = sprintf(counter_string, "BTstack counter %04u", counter);
         puts(counter_string);
         att_server_notify(ATT_CHARACTERISTIC_0000FF11_0000_1000_8000_00805F9B34FB_01_VALUE_HANDLE, (uint8_t*) counter_string, counter_string_len);
     }
-    run_loop_set_timer(ts, HEARTBEAT_PERIOD_MS);
-    run_loop_add_timer(ts);
+    btstack_run_loop_set_timer(ts, HEARTBEAT_PERIOD_MS);
+    btstack_run_loop_add_timer(ts);
 } 
 /* LISTING_END */
 

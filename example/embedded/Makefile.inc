@@ -10,19 +10,19 @@ CFLAGS += -I${BTSTACK_ROOT}/src
 
 CORE += \
     btstack_memory.c            \
-    bk_linked_list.c	        \
-    memory_pool.c               \
-    run_loop.c		            \
+    btstack_linked_list.c	    \
+    btstack_memory_pool.c       \
+    btstack_run_loop.c		    \
+    btstack_util.c 	            \
 
 COMMON += \
     hci.c			            \
-    hci_cmds.c		            \
+    hci_cmd.c		            \
     hci_dump.c		            \
     l2cap.c			            \
     l2cap_signaling.c	        \
 	remote_device_db_memory.c   \
     sdp_util.c	                \
-    utils.c			            \
     rfcomm.c	                \
     bnep.c	                    \
     sdp.c			            \
@@ -56,7 +56,7 @@ PAN += \
 	pan.c \
 
 EXAMPLES = 					\
-	ancs_client 			\
+	ancs_client_demo		\
 	gap_dedicated_bonding	\
 	gap_inquiry 			\
 	gap_inquiry_and_bond 	\
@@ -72,9 +72,10 @@ EXAMPLES = 					\
 	spp_counter 			\
 	spp_streamer			\
     gap_le_advertisements   \
+    hsp_hs_test             \
 
 EXAMPLES_USING_LE =			\
-	ancs_client 			\
+	ancs_client_demo		\
 	gatt_battery_query      \
 	gatt_browser			\
 	le_counter              \
@@ -94,13 +95,13 @@ PAN_OBJ = $(PAN:.c=.o)
 
 default_target: all
 
-${BTSTACK_ROOT}/src/version.h:
+${BTSTACK_ROOT}/src/btstack_version.h:
 	${BTSTACK_ROOT}/tool/get_version.sh
 
 # compile .gatt descriptions
 profile.h: profile.gatt
 	python ${BTSTACK_ROOT}/tool/compile-gatt.py $< $@ 
-ancs_client.h: ancs_client.gatt
+ancs_client_demo.h: ancs_client_demo.gatt
 	python ${BTSTACK_ROOT}/tool/compile-gatt.py $< $@ 
 spp_and_le_counter.h: spp_and_le_counter.gatt
 	python ${BTSTACK_ROOT}/tool/compile-gatt.py $< $@ 
@@ -155,8 +156,8 @@ gatt_browser: ${CORE_OBJ} ${COMMON_OBJ} ${ATT_OBJ} ${GATT_CLIENT_OBJ} ${SM_REAL_
 gatt_battery_query: ${CORE_OBJ} ${COMMON_OBJ} ${ATT_OBJ} ${GATT_CLIENT_OBJ} ${SM_REAL_OBJ} gatt_battery_query.c
 	${CC} $^ ${CFLAGS} ${LDFLAGS} -o $@
 
-ancs_client: ancs_client.h ${CORE_OBJ} ${COMMON_OBJ} ${ATT_OBJ} ${GATT_SERVER_OBJ} ${GATT_CLIENT_OBJ} ${SM_REAL_OBJ} ancs_client_lib.c ancs_client.c
-	${CC} $(filter-out ancs_client.h,$^) ${CFLAGS} ${LDFLAGS} -o $@
+ancs_client_demo: ancs_client_demo.h ${CORE_OBJ} ${COMMON_OBJ} ${ATT_OBJ} ${GATT_SERVER_OBJ} ${GATT_CLIENT_OBJ} ${SM_REAL_OBJ} ancs_client.c ancs_client_demo.c
+	${CC} $(filter-out ancs_client_demo.h,$^) ${CFLAGS} ${LDFLAGS} -o $@
 
 led_counter: ${CORE_OBJ} ${COMMON_OBJ} led_counter.c
 	${CC} $^ ${CFLAGS} ${LDFLAGS} -o $@
@@ -164,15 +165,16 @@ led_counter: ${CORE_OBJ} ${COMMON_OBJ} led_counter.c
 gap_le_advertisements: ${CORE_OBJ} ${COMMON_OBJ} ad_parser.c gap_le_advertisements.c
 	${CC} $^ ${CFLAGS} ${LDFLAGS} -o $@
 
+hsp_hs_test: ${CORE_OBJ} ${COMMON_OBJ} ${SDP_CLIENT} hsp_hs.o hsp_hs_test.c
+	${CC} $^ ${CFLAGS} ${LDFLAGS} -o $@
 
 clean:
 	rm -f ${EXAMPLES}
 	rm -f  *.o *.out *.hex 
-	rm -f  ${BTSTACK_ROOT}/src/version.h
-	rm -f  ancs_client.h profile.h spp_and_le_counter.h
+	rm -f  ${BTSTACK_ROOT}/src/btstack_version.h
+	rm -f  ancs_client_demo.h profile.h spp_and_le_counter.h
 	rm -rf *.dSYM
 	rm -rf ${BTSTACK_ROOT}/ble/*.o
 	rm -rf ${BTSTACK_ROOT}/src/*.o
-	rm -rf ${BTSTACK_ROOT}/platform/posix/src/*.o
 	
 	

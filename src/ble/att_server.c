@@ -46,10 +46,10 @@
 #include <string.h>
 #include <inttypes.h>
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
-#include "run_loop.h"
-#include "debug.h"
+#include "btstack_run_loop.h"
+#include "btstack_debug.h"
 #include "btstack_memory.h"
 #include "hci.h"
 #include "hci_dump.h"
@@ -90,7 +90,7 @@ static int       att_ir_le_device_db_index = -1;
 static int       att_ir_lookup_active = 0;
 
 static int       att_handle_value_indication_handle = 0;    
-static timer_source_t att_handle_value_indication_timer;
+static btstack_timer_source_t att_handle_value_indication_timer;
 
 static btstack_packet_handler_t att_client_packet_handler = NULL;
 
@@ -125,7 +125,7 @@ static void att_emit_mtu_event(uint16_t handle, uint16_t mtu){
     (*att_client_packet_handler)(HCI_EVENT_PACKET, 0, &event[0], sizeof(event));
 }
 
-static void att_handle_value_indication_timeout(timer_source_t *ts){
+static void att_handle_value_indication_timeout(btstack_timer_source_t *ts){
     uint16_t att_handle = att_handle_value_indication_handle;
     att_handle_value_indication_notify_client(ATT_HANDLE_VALUE_INDICATION_TIMEOUT, att_connection.con_handle, att_handle);
 }
@@ -334,7 +334,7 @@ static void att_packet_handler(uint8_t packet_type, uint16_t handle, uint8_t *pa
 
     // handle value indication confirms
     if (packet[0] == ATT_HANDLE_VALUE_CONFIRMATION && att_handle_value_indication_handle){
-        run_loop_remove_timer(&att_handle_value_indication_timer);
+        btstack_run_loop_remove_timer(&att_handle_value_indication_timer);
         uint16_t att_handle = att_handle_value_indication_handle;
         att_handle_value_indication_handle = 0;    
         att_handle_value_indication_notify_client(0, att_connection.con_handle, att_handle);
@@ -372,7 +372,7 @@ void att_server_register_packet_handler(btstack_packet_handler_t handler){
     att_client_packet_handler = handler;    
 }
 
-int  att_server_can_send(void){
+int  att_server_can_send_packet_now(void){
 	if (att_connection.con_handle == 0) return 0;
 	return l2cap_can_send_fixed_channel_packet_now(att_connection.con_handle);
 }
@@ -392,9 +392,9 @@ int att_server_indicate(uint16_t handle, uint8_t *value, uint16_t value_len){
 
     // track indication
     att_handle_value_indication_handle = handle;
-    run_loop_set_timer_handler(&att_handle_value_indication_timer, att_handle_value_indication_timeout);
-    run_loop_set_timer(&att_handle_value_indication_timer, ATT_TRANSACTION_TIMEOUT_MS);
-    run_loop_add_timer(&att_handle_value_indication_timer);
+    btstack_run_loop_set_timer_handler(&att_handle_value_indication_timer, att_handle_value_indication_timeout);
+    btstack_run_loop_set_timer(&att_handle_value_indication_timer, ATT_TRANSACTION_TIMEOUT_MS);
+    btstack_run_loop_add_timer(&att_handle_value_indication_timer);
 
     l2cap_reserve_packet_buffer();
     uint8_t * packet_buffer = l2cap_get_outgoing_buffer();

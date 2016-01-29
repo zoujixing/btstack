@@ -19,11 +19,11 @@ static uint16_t packet_buffer_len = 0;
 static uint8_t aes128_cyphertext[16];
 
 static hci_connection_t  the_connection;
-static bk_linked_list_t     connections;
+static btstack_linked_list_t     connections;
 
 void mock_init(void){
 	the_connection.item.next = NULL;
-	connections = (linked_item*) &the_connection;
+	connections = (btstack_linked_item*) &the_connection;
 }
 
 uint8_t * mock_packet_buffer(void){
@@ -131,8 +131,8 @@ hci_connection_t * hci_connection_for_bd_addr_and_type(bd_addr_t addr, bd_addr_t
 hci_connection_t * hci_connection_for_handle(hci_con_handle_t con_handle){
 	return &the_connection;
 }
-void hci_connections_get_iterator(linked_list_iterator_t *it){
-    linked_list_iterator_init(it, &connections);
+void hci_connections_get_iterator(btstack_linked_list_iterator_t *it){
+    btstack_linked_list_iterator_init(it, &connections);
 }
 
 // get addr type and address used in advertisement packets
@@ -158,7 +158,7 @@ int  l2cap_can_send_fixed_channel_packet_now(uint16_t handle){
 int hci_send_cmd(const hci_cmd_t *cmd, ...){
     va_list argptr;
     va_start(argptr, cmd);
-    uint16_t len = hci_create_cmd_internal(packet_buffer, cmd, argptr);
+    uint16_t len = hci_cmd_create_from_template(packet_buffer, cmd, argptr);
     va_end(argptr);
 	hci_dump_packet(HCI_COMMAND_DATA_PACKET, 0, packet_buffer, len);
 	dump_packet(HCI_COMMAND_DATA_PACKET, packet_buffer, len);

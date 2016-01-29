@@ -18,13 +18,13 @@
 #include "btstack_memory.h"
 #include "hal_tick.h"
 #include "hal_cpu.h"
-#include "hci_cmds.h"
-#include "utils.h"
-#include "run_loop.h"
-#include "run_loop_embedded.h"
+#include "hci_cmd.h"
+#include "btstack_util.h"
+#include "btstack_run_loop.h"
+#include "btstack_run_loop_embedded.h"
 #include "classic/sdp_util.h"
 
-#include "bt_control_em9301.h"
+#include "btstack_chipset_em9301.h"
 #include "gap.h"
 #include "hci.h"
 #include "hci_dump.h"
@@ -35,7 +35,7 @@
 #include "att_db_util.h"
 #include "ble/le_device_db.h"
 #include "ble/sm.h"
-#include "debug.h"
+#include "btstack_debug.h"
 
 // Pin 13 has an LED connected on most Arduino boards.
 #define PIN_LED 13
@@ -74,7 +74,7 @@ static uint16_t le_peripheral_todos = 0;
 static bool have_custom_addr;
 static bd_addr_t public_bd_addr;
 
-static timer_source_t connection_timer;
+static btstack_timer_source_t connection_timer;
 
 static void (*bleAdvertismentCallback)(BLEAdvertisement * bleAdvertisement) = NULL;
 static void (*bleDeviceConnectedCallback)(BLEStatus status, BLEDevice * device)= NULL;
@@ -176,7 +176,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
                         case HCI_SUBEVENT_LE_CONNECTION_COMPLETE:
                             handle = READ_BT_16(packet, 4);
                             printf("Connection complete, handle 0x%04x\n", handle);
-                            run_loop_remove_timer(&connection_timer);
+                            btstack_run_loop_remove_timer(&connection_timer);
                             if (!bleDeviceConnectedCallback) break;
                             if (packet[3]){
                                 (*bleDeviceConnectedCallback)(BLE_STATUS_CONNECTION_ERROR, NULL);
@@ -300,7 +300,7 @@ static void gatt_client_callback(uint8_t packet_type, uint8_t * packet, uint16_t
     }
 }
 
-static void connection_timeout_handler(timer_source_t * timer){
+static void connection_timeout_handler(btstack_timer_source_t * timer){
     // log_info("Cancel outgoing connection");
     le_central_connect_cancel();
     if (!bleDeviceConnectedCallback) return;
@@ -709,13 +709,13 @@ void BTstackManager::bleConnect(BD_ADDR_TYPE address_type, const char * address,
 void BTstackManager::bleConnect(BD_ADDR_TYPE address_type, const uint8_t address[6], int timeout_ms){
     le_central_connect((uint8_t*)address, (bd_addr_type_t) address_type);
     if (!timeout_ms) return;
-    run_loop_set_timer(&connection_timer, timeout_ms);
-    run_loop_set_timer_handler(&connection_timer, connection_timeout_handler);
-    run_loop_add_timer(&connection_timer);
+    btstack_run_loop_set_timer(&connection_timer, timeout_ms);
+    btstack_run_loop_set_timer_handler(&connection_timer, connection_timeout_handler);
+    btstack_run_loop_add_timer(&connection_timer);
 }
 
 void BTstackManager::bleDisconnect(BLEDevice * device){
-    run_loop_remove_timer(&connection_timer);
+    btstack_run_loop_remove_timer(&connection_timer);
     gap_disconnect(device->getHandle());
 }
 
@@ -746,12 +746,12 @@ void BTstackManager::setup(void){
     printf("BTstackManager::setup()\n");
 
 	btstack_memory_init();
-    run_loop_init(run_loop_embedded_get_instance());
+    btstack_run_loop_init(btstack_run_loop_embedded_get_instance());
 
-	hci_transport_t * transport = hci_transport_h4_dma_instance();
-    bt_control_t    * control   = bt_control_em9301_instance();
-	hci_init(transport, NULL, control, NULL);
-
+	const hci_transport_t * transport = hci_transport_h4_instance();
+	hci_init(transport, NULL, NULL);
+    hci_set_chipset(btstack_chipset_em9301_instance());
+    
     if (have_custom_addr){
         hci_set_bd_addr(public_bd_addr);
     }
@@ -816,7 +816,7 @@ void BTstackManager::loop(void){
     // process data from/to Bluetooth module
     hal_uart_dma_process();
     // BTstack Run Loop
-    run_loop_embedded_execute_once();
+    btstack_run_loop_embedded_execute_once();
 }
 
 void BTstackManager::bleStartScanning(void){

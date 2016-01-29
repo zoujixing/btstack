@@ -47,7 +47,7 @@
 #define __HCI_TRANSPORT_H
 
 #include <stdint.h>
-#include "run_loop.h"
+#include "btstack_run_loop.h"
 
 #if defined __cplusplus
 extern "C" {
@@ -57,15 +57,47 @@ extern "C" {
 
 /* HCI packet types */
 typedef struct {
-    int    (*open)(void *transport_config);
-    int    (*close)(void *transport_config);
-    int    (*send_packet)(uint8_t packet_type, uint8_t *packet, int size);
+    /**
+     * transport name 
+     */
+    const char * name;
+
+    /**
+     * init transport
+     * @param transport_config
+     */
+    void   (*init) (const void *transport_config);
+
+    /**
+     * open transport connection
+     */
+    int    (*open)(void);
+
+    /**
+     * close transport connection
+     */
+    int    (*close)(void);
+
+    /**
+     * register packet handler for HCI packets: ACL, SCO, and Events
+     */
     void   (*register_packet_handler)(void (*handler)(uint8_t packet_type, uint8_t *packet, uint16_t size));
-    const char * (*get_transport_name)(void);
-    // custom extension for UART transport implementations
-    int    (*set_baudrate)(uint32_t baudrate);
-    // support async transport layers, e.g. IRQ driven without buffers
+
+    /**
+     * support async transport layers, e.g. IRQ driven without buffers
+     */
     int    (*can_send_packet_now)(uint8_t packet_type);
+
+    /**
+     * send packet
+     */
+    int    (*send_packet)(uint8_t packet_type, uint8_t *packet, int size);
+
+    /**
+     *  extension for UART transport implementations
+     */
+    int    (*set_baudrate)(uint32_t baudrate);
+
 } hci_transport_t;
 
 typedef enum {
@@ -91,33 +123,15 @@ typedef struct {
 /*
  * @brief
  */
-extern hci_transport_t * hci_transport_h4_posix_instance(void);
+extern const hci_transport_t * hci_transport_h4_instance(void);
 
 /*
  * @brief
  */
-extern hci_transport_t * hci_transport_h4_dma_instance(void);
-
-/*
- * @brief
- */
-extern hci_transport_t * hci_transport_h4_iphone_instance(void);
-
-/*
- * @brief
- */
-extern hci_transport_t * hci_transport_h4_wiced_instance();
-
-/*
- * @brief
- */
-extern hci_transport_t * hci_transport_usb_instance(void);
+extern const hci_transport_t * hci_transport_usb_instance(void);
 
 
 /* API_END */
-
-// support for "enforece wake device" in h4 - used by iOS power management
-extern void hci_transport_h4_iphone_set_enforce_wake_device(char *path);
     
 #if defined __cplusplus
 }

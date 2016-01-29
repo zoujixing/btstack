@@ -41,7 +41,7 @@
 //
 // *****************************************************************************
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -49,8 +49,8 @@
 #include <string.h>
 #include <inttypes.h>
 
-#include "hci_cmds.h"
-#include "run_loop.h"
+#include "hci_cmd.h"
+#include "btstack_run_loop.h"
 
 #include "hci.h"
 #include "btstack_memory.h"
@@ -58,7 +58,7 @@
 #include "l2cap.h"
 #include "classic/sdp_query_rfcomm.h"
 #include "classic/sdp.h"
-#include "debug.h"
+#include "btstack_debug.h"
 
 #define HFP_HF_FEATURES_SIZE 10
 #define HFP_AG_FEATURES_SIZE 12
@@ -100,7 +100,7 @@ static const char * hfp_ag_features[] = {
 static int hfp_generic_status_indicators_nr = 0;
 static hfp_generic_status_indicator_t hfp_generic_status_indicators[HFP_MAX_NUM_HF_INDICATORS];
 
-static bk_linked_list_t hfp_connections = NULL;
+static btstack_linked_list_t hfp_connections = NULL;
 static void parse_sequence(hfp_connection_t * context);
 
 hfp_generic_status_indicator_t * get_hfp_generic_status_indicators(void){
@@ -132,9 +132,9 @@ const char * hfp_ag_feature(int index){
 int send_str_over_rfcomm(uint16_t cid, char * command){
     if (!rfcomm_can_send_packet_now(cid)) return 1;
     log_info("HFP_TX %s", command);
-    int err = rfcomm_send_internal(cid, (uint8_t*) command, strlen(command));
+    int err = rfcomm_send(cid, (uint8_t*) command, strlen(command));
     if (err){
-        log_error("rfcomm_send_internal -> error 0x%02x \n", err);
+        log_error("rfcomm_send -> error 0x%02x \n", err);
     } 
     return 1;
 }
@@ -229,15 +229,15 @@ static void hfp_emit_audio_connection_established_event(hfp_callback_t callback,
     (*callback)(event, sizeof(event));
 }
 
-bk_linked_list_t * hfp_get_connections(){
-    return (bk_linked_list_t *) &hfp_connections;
+btstack_linked_list_t * hfp_get_connections(){
+    return (btstack_linked_list_t *) &hfp_connections;
 } 
 
 hfp_connection_t * get_hfp_connection_context_for_rfcomm_cid(uint16_t cid){
-    linked_list_iterator_t it;    
-    linked_list_iterator_init(&it, hfp_get_connections());
-    while (linked_list_iterator_has_next(&it)){
-        hfp_connection_t * connection = (hfp_connection_t *)linked_list_iterator_next(&it);
+    btstack_linked_list_iterator_t it;    
+    btstack_linked_list_iterator_init(&it, hfp_get_connections());
+    while (btstack_linked_list_iterator_has_next(&it)){
+        hfp_connection_t * connection = (hfp_connection_t *)btstack_linked_list_iterator_next(&it);
         if (connection->rfcomm_cid == cid){
             return connection;
         }
@@ -246,10 +246,10 @@ hfp_connection_t * get_hfp_connection_context_for_rfcomm_cid(uint16_t cid){
 }
 
 hfp_connection_t * get_hfp_connection_context_for_bd_addr(bd_addr_t bd_addr){
-    linked_list_iterator_t it;  
-    linked_list_iterator_init(&it, hfp_get_connections());
-    while (linked_list_iterator_has_next(&it)){
-        hfp_connection_t * connection = (hfp_connection_t *)linked_list_iterator_next(&it);
+    btstack_linked_list_iterator_t it;  
+    btstack_linked_list_iterator_init(&it, hfp_get_connections());
+    while (btstack_linked_list_iterator_has_next(&it)){
+        hfp_connection_t * connection = (hfp_connection_t *)btstack_linked_list_iterator_next(&it);
         if (memcmp(connection->remote_addr, bd_addr, 6) == 0) {
             return connection;
         }
@@ -258,10 +258,10 @@ hfp_connection_t * get_hfp_connection_context_for_bd_addr(bd_addr_t bd_addr){
 }
 
 hfp_connection_t * get_hfp_connection_context_for_sco_handle(uint16_t handle){
-    linked_list_iterator_t it;    
-    linked_list_iterator_init(&it, hfp_get_connections());
-    while (linked_list_iterator_has_next(&it)){
-        hfp_connection_t * connection = (hfp_connection_t *)linked_list_iterator_next(&it);
+    btstack_linked_list_iterator_t it;    
+    btstack_linked_list_iterator_init(&it, hfp_get_connections());
+    while (btstack_linked_list_iterator_has_next(&it)){
+        hfp_connection_t * connection = (hfp_connection_t *)btstack_linked_list_iterator_next(&it);
         if (connection->sco_handle == handle){
             return connection;
         }
@@ -309,12 +309,12 @@ static hfp_connection_t * create_hfp_connection_context(){
     context->generic_status_indicators_nr = hfp_generic_status_indicators_nr;
     memcpy(context->generic_status_indicators, hfp_generic_status_indicators, hfp_generic_status_indicators_nr * sizeof(hfp_generic_status_indicator_t));
 
-    linked_list_add(&hfp_connections, (linked_item_t*)context);
+    btstack_linked_list_add(&hfp_connections, (btstack_linked_item_t*)context);
     return context;
 }
 
 static void remove_hfp_connection_context(hfp_connection_t * context){
-    linked_list_remove(&hfp_connections, (linked_item_t*)context);   
+    btstack_linked_list_remove(&hfp_connections, (btstack_linked_item_t*)context);   
 }
 
 static hfp_connection_t * provide_hfp_connection_context_for_bd_addr(bd_addr_t bd_addr){
@@ -478,7 +478,7 @@ void hfp_handle_hci_event(hfp_callback_t callback, uint8_t packet_type, uint8_t 
             context->rfcomm_cid = READ_BT_16(packet, 9);
             context->state = HFP_W4_RFCOMM_CONNECTED;
             printf("RFCOMM channel %u requested for %s\n", context->rfcomm_cid, bd_addr_to_str(context->remote_addr));
-            rfcomm_accept_connection_internal(context->rfcomm_cid);
+            rfcomm_accept_connection(context->rfcomm_cid);
             break;
 
         case RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE:

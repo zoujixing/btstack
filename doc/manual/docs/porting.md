@@ -5,7 +5,7 @@ adjusted for different hardware platforms.
 ## Time Abstraction Layer {#sec:timeAbstractionPorting}
 
 BTstack requires a way to learn about passing time.
-*run_loop_embedded.c* supports two different modes: system ticks or a
+*btstack_run_loop_embedded.c* supports two different modes: system ticks or a
 system clock with millisecond resolution. BTstack’s timing requirements
 are quite low as only Bluetooth timeouts in the second range need to be
 handled.
@@ -19,7 +19,7 @@ system tick (as it is the default with CMSIS on ARM Cortex devices), you
 can use that to implement BTstack’s time abstraction in
 *include/btstack/hal_tick.h\>*.
 
-For this, you need to define *HAVE_TICK* in *btstack-config.h*:
+For this, you need to define *HAVE_TICK* in *btstack_config.h*:
 
     #define HAVE_TICK
 
@@ -44,7 +44,7 @@ If your platform already has a system clock or it is more convenient to
 provide such a clock, you can use the Time MS Hardware Abstraction in
 *include/btstack/hal_time_ms.h*.
 
-For this, you need to define *HAVE_TIME_MS* in *btstack-config.h*:
+For this, you need to define *HAVE_TIME_MS* in *btstack_config.h*:
 
     #define HAVE_TIME_MS
 
@@ -66,9 +66,9 @@ to sleep. In addition, it provides an error handler *hw_error* that is
 called when a Hardware Error is reported by the Bluetooth module. The
 callback allows for persistent logging or signaling of this failure.
 
-Overall, the struct *bt_control_t* encapsulates common functionality
+Overall, the struct *btstack_control_t* encapsulates common functionality
 that is not covered by the Bluetooth specification. As an example, the
-*bt_control_cc256x_in-stance* function returns a pointer to a control
+*btstack_chipset_cc256x_in-stance* function returns a pointer to a control
 struct suitable for the CC256x chipset.
 
 

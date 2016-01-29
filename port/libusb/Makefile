@@ -3,7 +3,7 @@ BTSTACK_ROOT = ../..
 
 CORE += main.c stdin_support.c
 
-COMMON += hci_transport_h2_libusb.c run_loop_posix.c remote_device_db_fs.c
+COMMON += hci_transport_h2_libusb.c btstack_run_loop_posix.c remote_device_db_fs.c
 
 include ${BTSTACK_ROOT}/example/embedded/Makefile.inc
 
@@ -11,11 +11,11 @@ include ${BTSTACK_ROOT}/example/embedded/Makefile.inc
 CFLAGS  += -g -Wall -Wmissing-prototypes -Wstrict-prototypes -Wshadow -Werror
 # CFLAGS += -Werror
 
-CFLAGS += -I${BTSTACK_ROOT}/platform/posix/src \
+CFLAGS += -I${BTSTACK_ROOT}/platform/posix \
 		  -I${BTSTACK_ROOT}/platform/embedded
 
 VPATH += ${BTSTACK_ROOT}/platform/embedded
-VPATH += ${BTSTACK_ROOT}/platform/posix/src
+VPATH += ${BTSTACK_ROOT}/platform/posix
 
 ifeq ($(OS),Windows_NT)
 LDFLAGS += -lws2_32
@@ -28,4 +28,4 @@ CFLAGS  += $(shell pkg-config libusb-1.0 --cflags)
 LDFLAGS += $(shell pkg-config libusb-1.0 --libs)
 endif
 
-all: ${BTSTACK_ROOT}/src/version.h ${EXAMPLES}
+all: ${BTSTACK_ROOT}/src/btstack_version.h ${EXAMPLES}

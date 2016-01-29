@@ -40,8 +40,8 @@
 
 #include "att_db_util.h"
 #include "ble/att.h"
-#include "utils.h"
-#include "debug.h"
+#include "btstack_util.h"
+#include "btstack_debug.h"
 #include "bluetooth.h"
 
 // ATT DB Storage

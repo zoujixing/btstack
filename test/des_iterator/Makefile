@@ -9,12 +9,12 @@ LDFLAGS += -lCppUTest -lCppUTestExt
 
 VPATH += ${BTSTACK_ROOT}/src
 VPATH += ${BTSTACK_ROOT}/src/classic
-VPATH += ${BTSTACK_ROOT}/platform/posix/src
+VPATH += ${BTSTACK_ROOT}/platform/posix
 
 COMMON = \
     sdp_util.c	              \
     hci_dump.c    \
-	utils.c			          
+	btstack_util.c			          
  
 COMMON_OBJ = $(COMMON:.c=.o)
 

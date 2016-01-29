@@ -39,17 +39,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "run_loop.h"
-#include "hci_cmds.h"
-#include "utils.h"
+#include "btstack_run_loop.h"
+#include "hci_cmd.h"
+#include "btstack_util.h"
 #include "classic/sdp_util.h"
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include "ble/gatt_client.h"
 #include "ble/ad_parser.h"
 
-#include "debug.h"
+#include "btstack_debug.h"
 #include "btstack_memory.h"
 #include "hci.h"
 #include "hci_dump.h"
@@ -59,8 +59,8 @@
 #include "ble/sm.h"
 #include "ble/le_device_db.h"
 
-static bk_linked_list_t gatt_client_connections = NULL;
-static bk_linked_list_t gatt_subclients = NULL;
+static btstack_linked_list_t gatt_client_connections = NULL;
+static btstack_linked_list_t gatt_subclients = NULL;
 static uint16_t next_gatt_client_id = 0;
 static uint8_t  pts_suppress_mtu_exchange;
 
@@ -86,10 +86,10 @@ static uint16_t gatt_client_next_id(void){
 }
 
 static gatt_client_callback_t gatt_client_callback_for_id_new(uint16_t id){
-    linked_list_iterator_t it;    
-    linked_list_iterator_init(&it, &gatt_subclients);
-    while (linked_list_iterator_has_next(&it)){
-        gatt_subclient_t * item = (gatt_subclient_t*) linked_list_iterator_next(&it);
+    btstack_linked_list_iterator_t it;    
+    btstack_linked_list_iterator_init(&it, &gatt_subclients);
+    while (btstack_linked_list_iterator_has_next(&it)){
+        gatt_subclient_t * item = (gatt_subclient_t*) btstack_linked_list_iterator_next(&it);
         if ( item->id != id) continue;
         return item->callback;
     } 
@@ -110,19 +110,19 @@ uint16_t gatt_client_register_packet_handler(gatt_client_callback_t gatt_callbac
 
     subclient->id = gatt_client_next_id();
     subclient->callback = gatt_callback;
-    linked_list_add(&gatt_subclients, (linked_item_t *) subclient);
+    btstack_linked_list_add(&gatt_subclients, (btstack_linked_item_t *) subclient);
     log_info("gatt_client_register_packet_handler with new id %u", subclient->id);
 
     return subclient->id;
 }
 
 void gatt_client_unregister_packet_handler(uint16_t gatt_client_id){
-    linked_list_iterator_t it;    
-    linked_list_iterator_init(&it, &gatt_subclients);
-    while (linked_list_iterator_has_next(&it)){
-        gatt_subclient_t * subclient = (gatt_subclient_t*) linked_list_iterator_next(&it);
+    btstack_linked_list_iterator_t it;    
+    btstack_linked_list_iterator_init(&it, &gatt_subclients);
+    while (btstack_linked_list_iterator_has_next(&it)){
+        gatt_subclient_t * subclient = (gatt_subclient_t*) btstack_linked_list_iterator_next(&it);
         if ( subclient->id != gatt_client_id) continue;
-        linked_list_remove(&gatt_subclients, (linked_item_t *) subclient);
+        btstack_linked_list_remove(&gatt_subclients, (btstack_linked_item_t *) subclient);
         btstack_memory_gatt_subclient_free(subclient);
     } 
 }
@@ -133,11 +133,11 @@ void gatt_client_init(void){
     att_dispatch_register_client(gatt_client_att_packet_handler);
 }
 
-static gatt_client_t * gatt_client_for_timer(timer_source_t * ts){
-    linked_list_iterator_t it;    
-    linked_list_iterator_init(&it, &gatt_client_connections);
-    while (linked_list_iterator_has_next(&it)){
-        gatt_client_t * peripheral = (gatt_client_t *) linked_list_iterator_next(&it);
+static gatt_client_t * gatt_client_for_timer(btstack_timer_source_t * ts){
+    btstack_linked_list_iterator_t it;    
+    btstack_linked_list_iterator_init(&it, &gatt_client_connections);
+    while (btstack_linked_list_iterator_has_next(&it)){
+        gatt_client_t * peripheral = (gatt_client_t *) btstack_linked_list_iterator_next(&it);
         if ( &peripheral->gc_timeout == ts) {
             return peripheral;
         }
@@ -145,7 +145,7 @@ static gatt_client_t * gatt_client_for_timer(timer_source_t * ts){
     return NULL;
 }
 
-static void gatt_client_timeout_handler(timer_source_t * timer){
+static void gatt_client_timeout_handler(btstack_timer_source_t * timer){
     gatt_client_t * peripheral = gatt_client_for_timer(timer);
     if (!peripheral) return;
     log_info("GATT client timeout handle, handle 0x%02x", peripheral->handle);
@@ -154,20 +154,20 @@ static void gatt_client_timeout_handler(timer_source_t * timer){
 
 static void gatt_client_timeout_start(gatt_client_t * peripheral){
     log_info("GATT client timeout start, handle 0x%02x", peripheral->handle);
-    run_loop_remove_timer(&peripheral->gc_timeout);
-    run_loop_set_timer_handler(&peripheral->gc_timeout, gatt_client_timeout_handler);
-    run_loop_set_timer(&peripheral->gc_timeout, 30000); // 30 seconds sm timeout
-    run_loop_add_timer(&peripheral->gc_timeout);
+    btstack_run_loop_remove_timer(&peripheral->gc_timeout);
+    btstack_run_loop_set_timer_handler(&peripheral->gc_timeout, gatt_client_timeout_handler);
+    btstack_run_loop_set_timer(&peripheral->gc_timeout, 30000); // 30 seconds sm timeout
+    btstack_run_loop_add_timer(&peripheral->gc_timeout);
 }
 
 static void gatt_client_timeout_stop(gatt_client_t * peripheral){
     log_info("GATT client timeout stop, handle 0x%02x", peripheral->handle);
-    run_loop_remove_timer(&peripheral->gc_timeout);
+    btstack_run_loop_remove_timer(&peripheral->gc_timeout);
 }
 
 static gatt_client_t * get_gatt_client_context_for_handle(uint16_t handle){
-    linked_item_t *it;
-    for (it = (linked_item_t *) gatt_client_connections; it ; it = it->next){
+    btstack_linked_item_t *it;
+    for (it = (btstack_linked_item_t *) gatt_client_connections; it ; it = it->next){
         gatt_client_t * peripheral = (gatt_client_t *) it;
         if (peripheral->handle == handle){
             return peripheral;
@@ -191,7 +191,7 @@ static gatt_client_t * provide_context_for_conn_handle(uint16_t con_handle){
     context->mtu = ATT_DEFAULT_MTU;
     context->mtu_state = SEND_MTU_EXCHANGE;
     context->gatt_client_state = P_READY;
-    linked_list_add(&gatt_client_connections, (linked_item_t*)context);
+    btstack_linked_list_add(&gatt_client_connections, (btstack_linked_item_t*)context);
 
     // skip mtu exchange for testing sm with pts
     if (pts_suppress_mtu_exchange){
@@ -498,10 +498,10 @@ static void emit_event_new(uint16_t gatt_client_id, uint8_t * packet, uint16_t s
 }
 
 static void emit_event_to_all_subclients_new(uint8_t * packet, uint16_t size){
-    linked_list_iterator_t it;    
-    linked_list_iterator_init(&it, &gatt_subclients);
-    while (linked_list_iterator_has_next(&it)){
-        gatt_subclient_t * subclient = (gatt_subclient_t*) linked_list_iterator_next(&it);
+    btstack_linked_list_iterator_t it;    
+    btstack_linked_list_iterator_init(&it, &gatt_subclients);
+    while (btstack_linked_list_iterator_has_next(&it)){
+        gatt_subclient_t * subclient = (gatt_subclient_t*) btstack_linked_list_iterator_next(&it);
         (*subclient->callback)(HCI_EVENT_PACKET, packet, size);
     } 
 }
@@ -823,8 +823,8 @@ static int is_value_valid(gatt_client_t *peripheral, uint8_t *packet, uint16_t s
 
 static void gatt_client_run(void){
 
-    linked_item_t *it;
-    for (it = (linked_item_t *) gatt_client_connections; it ; it = it->next){
+    btstack_linked_item_t *it;
+    for (it = (btstack_linked_item_t *) gatt_client_connections; it ; it = it->next){
 
         gatt_client_t * peripheral = (gatt_client_t *) it;
 
@@ -1036,7 +1036,7 @@ static void gatt_client_hci_event_packet_handler(uint8_t packet_type, uint8_t *p
             if (!peripheral) break;
             gatt_client_report_error_if_pending(peripheral, ATT_ERROR_HCI_DISCONNECT_RECEIVED);
             
-            linked_list_remove(&gatt_client_connections, (linked_item_t *) peripheral);
+            btstack_linked_list_remove(&gatt_client_connections, (btstack_linked_item_t *) peripheral);
             btstack_memory_gatt_client_free(peripheral);
             break;
         }
@@ -1375,10 +1375,10 @@ static void gatt_client_att_packet_handler(uint8_t packet_type, uint16_t handle,
 }
 
 static void att_signed_write_handle_cmac_result(uint8_t hash[8]){
-    linked_list_iterator_t it;
-    linked_list_iterator_init(&it, &gatt_client_connections);
-    while (linked_list_iterator_has_next(&it)){
-        gatt_client_t * peripheral = (gatt_client_t *) linked_list_iterator_next(&it);
+    btstack_linked_list_iterator_t it;
+    btstack_linked_list_iterator_init(&it, &gatt_client_connections);
+    while (btstack_linked_list_iterator_has_next(&it)){
+        gatt_client_t * peripheral = (gatt_client_t *) btstack_linked_list_iterator_next(&it);
         if (peripheral->gatt_client_state == P_W4_CMAC_RESULT){
             // store result
             memcpy(peripheral->cmac, hash, 8);

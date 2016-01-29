@@ -53,11 +53,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
-#include "run_loop.h"
+#include "btstack_run_loop.h"
 
-#include "debug.h"
+#include "btstack_debug.h"
 #include "btstack_memory.h"
 #include "hci.h"
 #include "hci_dump.h"

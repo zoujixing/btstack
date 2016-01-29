@@ -48,13 +48,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "run_loop.h"
+#include "btstack_run_loop.h"
 #include "hal_led.h"
 
 #define HEARTBEAT_PERIOD_MS 1000
 
 static int counter = 0;
-static timer_source_t heartbeat;
+static btstack_timer_source_t heartbeat;
     
 /* @section Periodic Timer Setup 
  *
@@ -65,7 +65,7 @@ static timer_source_t heartbeat;
  */ 
 
 /* LISTING_START(LEDToggler): Periodic counter */  
-static void heartbeat_handler(timer_source_t *ts){     
+static void heartbeat_handler(btstack_timer_source_t *ts){     
     // increment counter
     char lineBuffer[30];
     sprintf(lineBuffer, "BTstack counter %04u\n\r", ++counter);
@@ -75,8 +75,8 @@ static void heartbeat_handler(timer_source_t *ts){
     hal_led_toggle();
 
     // re-register timer
-    run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
-    run_loop_add_timer(&heartbeat);
+    btstack_run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
+    btstack_run_loop_add_timer(&heartbeat);
 } 
 /* LISTING_END */
 
@@ -92,8 +92,8 @@ int btstack_main(int argc, const char * argv[]){
 
     // set one-shot timer
     heartbeat.process = &heartbeat_handler;
-    run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
-    run_loop_add_timer(&heartbeat);
+    btstack_run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
+    btstack_run_loop_add_timer(&heartbeat);
 
     printf("Running...\n\r");
     return 0;

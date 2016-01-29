@@ -10,36 +10,36 @@ include ${BTSTACK_ROOT}/example/embedded/Makefile.inc
 COMMON = \
 	sdp.c			            \
 	sdp_query_rfcomm.c		    \
-    bk_linked_list.c	        \
+    btstack_linked_list.c	    \
     btstack_memory.c            \
+    btstack_memory_pool.c       \
+    btstack_run_loop.c		    \
+    btstack_run_loop_posix.c    \
+    btstack_util.c			    \
     hci.c			            \
-    hci_cmds.c		            \
+    hci_cmd.c		            \
     hci_dump.c		            \
     l2cap.c			            \
     l2cap_signaling.c 			\
-    memory_pool.c               \
     remote_device_db_memory.c   \
     rfcomm.c			        \
-    run_loop.c		            \
-    run_loop_posix.c            \
     sdp_client.c		        \
     sdp_parser.c		        \
     sdp_query_util.c		    \
     sdp_util.c	                \
-    utils.c			            \
 
 
 MOCK = \
 	mock.c 						\
 	test_sequences.c            \
-    bk_linked_list.c	        \
+    btstack_linked_list.c	    \
     btstack_memory.c            \
-    hci_cmds.c					\
+    hci_cmd.c					\
     hci_dump.c     				\
-    memory_pool.c               \
+    btstack_memory_pool.c       \
     remote_device_db_memory.c   \
     sdp_util.c	                \
-    utils.c			            \
+    btstack_util.c			    \
 	
 COMMON_OBJ  = $(COMMON:.c=.o) 
 MOCK_OBJ  = $(MOCK:.c=.o)
@@ -53,14 +53,14 @@ CFLAGS  = -g -Wall \
 
 VPATH += ${BTSTACK_ROOT}/src
 VPATH += ${BTSTACK_ROOT}/src/classic
-VPATH += ${BTSTACK_ROOT}/platform/posix/src
+VPATH += ${BTSTACK_ROOT}/platform/posix
 
 CFLAGS  = -g -Wall -I. -I../ -I${BTSTACK_ROOT}/src -I${BTSTACK_ROOT}/include -I${BTSTACK_ROOT}/ble
 LDFLAGS += -lCppUTest -lCppUTestExt
 
 EXAMPLES = hfp_ag_parser_test hfp_ag_client_test hfp_hf_parser_test hfp_hf_client_test 
 
-all: ${BTSTACK_ROOT}/src/version.h ${EXAMPLES}
+all: ${BTSTACK_ROOT}/src/btstack_version.h ${EXAMPLES}
 
 clean:
 	rm -rf *.o $(EXAMPLES) $(CLIENT_EXAMPLES) *.dSYM

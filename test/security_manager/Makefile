@@ -5,26 +5,26 @@ CC = g++
 BTSTACK_ROOT =  ../..
 
 CFLAGS  = -DUNIT_TEST -x c++ -g -Wall -Wno-unused
-CFLAGS += -I. -I.. -I${BTSTACK_ROOT}/src -I${BTSTACK_ROOT}/ble -I${BTSTACK_ROOT}/platform/posix/src
+CFLAGS += -I. -I.. -I${BTSTACK_ROOT}/src -I${BTSTACK_ROOT}/ble -I${BTSTACK_ROOT}/platform/posix
 LDFLAGS +=  -lCppUTest -lCppUTestExt
 
 VPATH += ${BTSTACK_ROOT}/src
 VPATH += ${BTSTACK_ROOT}/src/ble 
-VPATH += ${BTSTACK_ROOT}/platform/posix/src
+VPATH += ${BTSTACK_ROOT}/platform/posix
 
 COMMON = \
-    utils.c			            \
+    btstack_linked_list.c		\
     btstack_memory.c			\
-    memory_pool.c			    \
-    bk_linked_list.c		    \
-    run_loop.c					\
-    run_loop_posix.c			\
-    hci_cmds.c					\
+    btstack_memory_pool.c		\
+    btstack_run_loop.c			\
+    btstack_run_loop_posix.c    \
+    hci_cmd.c					\
     hci_dump.c					\
-    sm.c     					\
     le_device_db_memory.c       \
-    rijndael.c 					\
     mock.c 				        \
+    rijndael.c 					\
+    sm.c     					\
+    btstack_util.c			            \
 	
 COMMON_OBJ = $(COMMON:.c=.o)
 

@@ -45,7 +45,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "bt_control_cc256x.h"
+#include "btstack_chipset_cc256x.h"
 #include "hal_adc.h"
 #include "hal_board.h"
 #include "hal_compat.h"
@@ -54,8 +54,8 @@
 #include "UserExperienceGraphics.h"
 #include  <msp430x54x.h>
 
-#include "run_loop.h"
-#include "hci_cmds.h"
+#include "btstack_run_loop.h"
+#include "hci_cmd.h"
 #include "btstack_memory.h"
 #include "hci.h"
 #include "l2cap.h"
@@ -372,16 +372,16 @@ int main(void){
     
 	/// GET STARTED ///
 	btstack_memory_init();
-    run_loop_init(run_loop_embedded_get_instance());
+    btstack_run_loop_init(btstack_run_loop_embedded_get_instance());
 
     // init HCI
-	hci_transport_t    * transport = hci_transport_h4_dma_instance();
-	bt_control_t       * control   = bt_control_cc256x_instance();
+	const hci_transport_t * transport = hci_transport_h4_instance();
     remote_device_db_t * remote_db = (remote_device_db_t *) &remote_device_db_memory;
-	hci_init(transport, &config, control, remote_db);
+	hci_init(transport, &config, remote_db);
+	hci_set_chipset(btstack_chipset_cc256x_instance());
 
     // use eHCILL
-    bt_control_cc256x_enable_ehcill(1);
+    btstack_chipset_cc256x_enable_ehcill(1);
 
     // init L2CAP
     l2cap_init();

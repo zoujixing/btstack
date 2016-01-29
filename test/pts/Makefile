@@ -3,16 +3,16 @@ BTSTACK_ROOT = ../..
 
 CORE += main.c stdin_support.c
 
-COMMON += hci_transport_h2_libusb.c run_loop_posix.c remote_device_db_fs.c
+COMMON += hci_transport_h2_libusb.c btstack_run_loop_posix.c remote_device_db_fs.c
 
 include ${BTSTACK_ROOT}/example/embedded/Makefile.inc
 
 CFLAGS += -g -Wall -Wmissing-prototypes -Wstrict-prototypes -Wshadow -Werror \
-          -I${BTSTACK_ROOT}/platform/posix/src \
+          -I${BTSTACK_ROOT}/platform/posix \
           -I${BTSTACK_ROOT}/platform/embedded \
 	      -I${BTSTACK_ROOT}/port/libusb
 
-VPATH += ${BTSTACK_ROOT}/platform/posix/src
+VPATH += ${BTSTACK_ROOT}/platform/posix
 VPATH += ${BTSTACK_ROOT}/port/libusb
 
 # use pkg-config for libusb
@@ -31,7 +31,7 @@ LDFLAGS += $(shell pkg-config libusb-1.0 --libs)
 
 EXAMPLES = iopt hfp_hf_test hfp_ag_test ble_peripheral_test ble_central_test l2cap_test classic_test bnep_test hsp_ag_test hsp_hs_test sco_loopback
 
-all: ${BTSTACK_ROOT}/src/version.h ${EXAMPLES}
+all: ${BTSTACK_ROOT}/src/btstack_version.h ${EXAMPLES}
 
 # compile .gatt descriptions
 ble_peripheral_test.h: ble_peripheral_test.gatt
@@ -54,7 +54,7 @@ hsp_hs_test: ${CORE_OBJ} ${COMMON_OBJ} ${SDP_CLIENT} hsp_hs.o hsp_hs_test.c
 hfp_hf_test: ${CORE_OBJ} ${COMMON_OBJ} ${SDP_CLIENT} hfp.o hfp_hf.o hfp_hf_test.c  
 	${CC} $^ ${CFLAGS} ${LDFLAGS} -o $@
 
-hfp_ag_test: ${CORE_OBJ} ${COMMON_OBJ} ${SDP_CLIENT} hfp.o hfp_ag_model.o hfp_ag.o hfp_ag_test.c  
+hfp_ag_test: ${CORE_OBJ} ${COMMON_OBJ} ${SDP_CLIENT} hfp.o hfp_gsm_model.o hfp_ag.o hfp_ag_test.c  
 	${CC} $^ ${CFLAGS} ${LDFLAGS} -o $@
 
 l2cap_test: ${CORE_OBJ} ${COMMON_OBJ} l2cap_test.c

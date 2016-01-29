@@ -1,10 +1,15 @@
 /**
  * Arduino Wrapper for BTstack
  */
-#pragma once
+#ifndef __ARDUINO_BTSTACK_H
+#define __ARDUINO_BTSTACK_H
+
+#if defined __cplusplus
+extern "C" {
+#endif
 
 #include "ble/att.h"
-#include "utils.h" 
+#include "btstack_util.h" 
 #include "ble/gatt_client.h"
 #include "hci.h"
 #include <stdint.h>
@@ -187,4 +192,10 @@ public:
  	uint16_t addGATTCharacteristicDynamic(UUID * uuid, uint16_t flags, uint16_t characteristic_id);
 };
 
- extern BTstackManager BTstack;
+extern BTstackManager BTstack;
+
+#if defined __cplusplus
+}
+#endif
+
+#endif // __ARDUINO_BTSTACK_H

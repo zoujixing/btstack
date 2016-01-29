@@ -48,14 +48,14 @@
 
 #include <msp430x54x.h>
 
-#include "bt_control_cc256x.h"
+#include "btstack_chipset_cc256x.h"
 #include "hal_adc.h"
 #include "hal_board.h"
 #include "hal_compat.h"
 #include "hal_usb.h"
 
-#include "hci_cmds.h"
-#include "run_loop.h"
+#include "hci_cmd.h"
+#include "btstack_run_loop.h"
 #include "classic/sdp_util.h"
 
 #include "hci.h"
@@ -64,7 +64,7 @@
 #include "classic/remote_device_db.h"
 #include "classic/rfcomm.h"
 #include "classic/sdp.h"
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #define HEARTBEAT_PERIOD_MS 1000
 
@@ -107,7 +107,7 @@ static void  prepare_accel_packet(void){
 } 
 
 static void send_packet(void){
-    int err = rfcomm_send_internal(rfcomm_channel_id, (uint8_t *)accel_buffer, sizeof(accel_buffer));
+    int err = rfcomm_send(rfcomm_channel_id, (uint8_t *)accel_buffer, sizeof(accel_buffer));
     switch(err){
         case 0:
             prepare_accel_packet();
@@ -115,7 +115,7 @@ static void send_packet(void){
         case BTSTACK_ACL_BUFFERS_FULL:
             break;
         default:
-            printf("rfcomm_send_internal() -> err %d\n\r", err);
+            printf("rfcomm_send() -> err %d\n\r", err);
             break;
     }
 }
@@ -165,7 +165,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
                     rfcomm_channel_nr = packet[8];
                     rfcomm_channel_id = READ_BT_16(packet, 9);
                     printf("RFCOMM channel %u requested for %s\n\r", rfcomm_channel_nr, bd_addr_to_str(event_addr));
-                    rfcomm_accept_connection_internal(rfcomm_channel_id);
+                    rfcomm_accept_connection(rfcomm_channel_id);
                     break;
                     
                 case RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE:
@@ -235,8 +235,8 @@ int btstack_main(int argc, const char * argv[]){
 
 /*
 
-rfcomm_send_internal gets called before we have credits
-rfcomm_send_internal returns undefined error codes???
+rfcomm_send gets called before we have credits
+rfcomm_send returns undefined error codes???
 
 */
 

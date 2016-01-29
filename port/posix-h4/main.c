@@ -47,15 +47,22 @@
 #include <string.h>
 #include <signal.h>
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include "btstack_memory.h"
-#include "debug.h"
+#include "btstack_debug.h"
 #include "hci.h"
 #include "hci_dump.h"
-#include "run_loop.h"
-#include "run_loop_posix.h"
+#include "btstack_run_loop.h"
+#include "btstack_run_loop_posix.h"
 #include "stdin_support.h"
+
+#include "btstack_chipset_bcm.h"
+#include "btstack_chipset_csr.h"
+#include "btstack_chipset_cc256x.h"
+#include "btstack_chipset_em9301.h"
+#include "btstack_chipset_stlc2500d.h"
+#include "btstack_chipset_tc3566x.h"
 
 int btstack_main(int argc, const char * argv[]);
 
@@ -86,25 +93,73 @@ void hal_led_toggle(void){
     led_state = 1 - led_state;
     printf("LED State %u\n", led_state);
 }
+static void using_921600_baud(void){
+    printf("Using 921600 baud.\n");
+    config.baudrate_main = 921600;
+}
+
+static void local_version_information_callback(uint8_t * packet){
+    printf("Local version information:\n");
+    uint16_t hci_version    = READ_BT_16(packet, 4);
+    uint16_t hci_revision   = READ_BT_16(packet, 6);
+    uint16_t lmp_version    = READ_BT_16(packet, 8);
+    uint16_t manufacturer   = READ_BT_16(packet, 10);
+    uint16_t lmp_subversion = READ_BT_16(packet, 12);
+    printf("- HCI Version  0x%04x\n", hci_version);
+    printf("- HCI Revision 0x%04x\n", hci_revision);
+    printf("- LMP Version  0x%04x\n", lmp_version);
+    printf("- LMP Revision 0x%04x\n", lmp_subversion);
+    printf("- Manufacturer 0x%04x\n", manufacturer);
+    switch (manufacturer){
+        case COMPANY_ID_CAMBRIDGE_SILICON_RADIO:
+            printf("Cambridge Silicon Radio CSR chipset.\n");
+            using_921600_baud();
+            hci_set_chipset(btstack_chipset_csr_instance());
+            break;
+        case COMPANY_ID_TEXAS_INSTRUMENTS_INC: 
+            printf("Texas Instruments - CC256x compatible chipset.\n");
+            using_921600_baud();
+            hci_set_chipset(btstack_chipset_cc256x_instance());
+            break;
+        case COMPANY_ID_BROADCOM_CORPORATION:   
+            printf("Broadcom chipset. Not supported yet\n");
+            // hci_set_chipset(btstack_chipset_bcm_instance());
+            break;
+        case COMPANY_ID_ST_MICROELECTRONICS:   
+            printf("ST Microelectronics - using STLC2500d driver.\n");
+            using_921600_baud();
+            hci_set_chipset(btstack_chipset_stlc2500d_instance());
+            break;
+        case COMPANY_ID_EM_MICROELECTRONICS_MARIN:
+            printf("EM Microelectronics - using EM9301 driver.\n");
+            hci_set_chipset(btstack_chipset_em9301_instance());
+            break;
+        default:
+            printf("Unknown manufacturer / manufacturer not supported yet.\n");
+            break;
+    }
+}
 
 int main(int argc, const char * argv[]){
 
 	/// GET STARTED with BTstack ///
 	btstack_memory_init();
-    run_loop_init(run_loop_posix_get_instance());
+    btstack_run_loop_init(btstack_run_loop_posix_get_instance());
 	    
     // use logger: format HCI_DUMP_PACKETLOGGER, HCI_DUMP_BLUEZ or HCI_DUMP_STDOUT
     hci_dump_open("/tmp/hci_dump.pklg", HCI_DUMP_PACKETLOGGER);
 
     // pick serial port
-    config.device_name = "/dev/tty.usbmodem1413";
+    config.device_name = "/dev/tty.usbserial-A900K0VK";
 
     // init HCI
-	hci_transport_t    * transport = hci_transport_h4_posix_instance();
+	const hci_transport_t * transport = hci_transport_h4_instance();
     remote_device_db_t * remote_db = (remote_device_db_t *) &remote_device_db_fs;
-        
-	hci_init(transport, (void*) &config, NULL, remote_db);
+	hci_init(transport, (void*) &config, remote_db);
     
+    // setup dynamic chipset driver setup
+    hci_set_local_version_information_callback(&local_version_information_callback);
+
     // handle CTRL-c
     signal(SIGINT, sigint_handler);
 
@@ -112,7 +167,7 @@ int main(int argc, const char * argv[]){
     btstack_main(argc, argv);
 
     // go
-    run_loop_execute();    
+    btstack_run_loop_execute();    
 
     return 0;
 }

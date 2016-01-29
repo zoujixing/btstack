@@ -49,8 +49,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "hci_cmds.h"
-#include "run_loop.h"
+#include "hci_cmd.h"
+#include "btstack_run_loop.h"
 #include "classic/sdp_util.h"
 
 #include "hci.h"
@@ -58,7 +58,7 @@
 #include "btstack_memory.h"
 #include "classic/rfcomm.h"
 #include "classic/sdp.h"
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #define HEARTBEAT_PERIOD_MS 500
 
@@ -111,23 +111,23 @@ static void spp_service_setup(void){
  * second. The heartbeat handler code is shown in Listing hbhManual. 
  */ 
 
-static timer_source_t heartbeat;
+static btstack_timer_source_t heartbeat;
 
 /* LISTING_START(hbhManual): Heartbeat handler with manual credit management */ 
-static void  heartbeat_handler(struct timer *ts){
+static void  heartbeat_handler(struct btstack_timer_source *ts){
     if (rfcomm_send_credit){
         rfcomm_grant_credits(rfcomm_channel_id, 1);
         rfcomm_send_credit = 0;
     }
-    run_loop_set_timer(ts, HEARTBEAT_PERIOD_MS);
-    run_loop_add_timer(ts);
+    btstack_run_loop_set_timer(ts, HEARTBEAT_PERIOD_MS);
+    btstack_run_loop_add_timer(ts);
 } 
 /* LISTING_END */
 
 static void one_shot_timer_setup(void){
     heartbeat.process = &heartbeat_handler;
-    run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
-    run_loop_add_timer(&heartbeat);
+    btstack_run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
+    btstack_run_loop_add_timer(&heartbeat);
 }
 
 /* LISTING_START(phManual): Packet handler with manual credit management */
@@ -177,7 +177,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
                     rfcomm_channel_nr = packet[8];
                     rfcomm_channel_id = READ_BT_16(packet, 9);
                     printf("RFCOMM channel %u requested for %s\n\r", rfcomm_channel_nr, bd_addr_to_str(event_addr));
-                    rfcomm_accept_connection_internal(rfcomm_channel_id);
+                    rfcomm_accept_connection(rfcomm_channel_id);
                     break;
                     
                 case RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE:

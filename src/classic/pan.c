@@ -46,10 +46,10 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include "classic/sdp_util.h"
-#include "hci_cmds.h"
+#include "hci_cmd.h"
 
 static const char default_panu_service_name[] = "Personal Ad-hoc User Service";
 static const char default_panu_service_desc[] = "Personal Ad-hoc User Service";

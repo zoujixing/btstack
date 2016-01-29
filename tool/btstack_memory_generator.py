@@ -54,7 +54,7 @@ hfile_header_begin = """
 extern "C" {
 #endif
 
-#include "btstack-config.h"
+#include "btstack_config.h"
     
 // Core
 #include "hci.h"
@@ -68,7 +68,7 @@ extern "C" {
 #include "classic/sdp.h"
 
 // BLE
-#ifdef HAVE_BLE
+#ifdef ENABLE_BLE
 #include "ble/gatt_client.h"
 #include "ble/sm.h"
 #endif
@@ -102,7 +102,7 @@ cfile_header_begin = """
  */
 
 #include "btstack_memory.h"
-#include "memory_pool.h"
+#include "btstack_memory_pool.h"
 
 #include <stdlib.h>
 
@@ -116,12 +116,12 @@ code_template = """
 #ifdef POOL_COUNT
 #if POOL_COUNT > 0
 static STRUCT_TYPE STRUCT_NAME_storage[POOL_COUNT];
-static memory_pool_t STRUCT_NAME_pool;
+static btstack_memory_pool_t STRUCT_NAME_pool;
 STRUCT_NAME_t * btstack_memory_STRUCT_NAME_get(void){
-    return (STRUCT_NAME_t *) memory_pool_get(&STRUCT_NAME_pool);
+    return (STRUCT_NAME_t *) btstack_memory_pool_get(&STRUCT_NAME_pool);
 }
 void btstack_memory_STRUCT_NAME_free(STRUCT_NAME_t *STRUCT_NAME){
-    memory_pool_free(&STRUCT_NAME_pool, STRUCT_NAME);
+    btstack_memory_pool_free(&STRUCT_NAME_pool, STRUCT_NAME);
 }
 #else
 STRUCT_NAME_t * btstack_memory_STRUCT_NAME_get(void){
@@ -145,7 +145,7 @@ void btstack_memory_STRUCT_NAME_free(STRUCT_NAME_t *STRUCT_NAME){
 """
 
 init_template = """#if POOL_COUNT > 0
-    memory_pool_create(&STRUCT_NAME_pool, STRUCT_NAME_storage, POOL_COUNT, sizeof(STRUCT_TYPE));
+    btstack_memory_pool_create(&STRUCT_NAME_pool, STRUCT_NAME_storage, POOL_COUNT, sizeof(STRUCT_TYPE));
 #endif"""
 
 def writeln(f, data):
@@ -183,7 +183,7 @@ for struct_names in list_of_structs:
     for struct_name in struct_names:
         writeln(f, replacePlaceholder(header_template, struct_name))
     writeln(f, "")
-writeln(f, "#ifdef HAVE_BLE")
+writeln(f, "#ifdef ENABLE_BLE")
 for struct_names in list_of_le_structs:
     writeln(f, "// "+ ", ".join(struct_names))
     for struct_name in struct_names:
@@ -200,7 +200,7 @@ for struct_names in list_of_structs:
     for struct_name in struct_names:
         writeln(f, replacePlaceholder(code_template, struct_name))
     writeln(f, "")
-writeln(f, "#ifdef HAVE_BLE")
+writeln(f, "#ifdef ENABLE_BLE")
 for struct_names in list_of_le_structs:
     for struct_name in struct_names:
         writeln(f, replacePlaceholder(code_template, struct_name))
@@ -213,7 +213,7 @@ writeln(f, "void btstack_memory_init(void){")
 for struct_names in list_of_structs:
     for struct_name in struct_names:
         writeln(f, replacePlaceholder(init_template, struct_name))
-writeln(f, "#ifdef HAVE_BLE")
+writeln(f, "#ifdef ENABLE_BLE")
 for struct_names in list_of_le_structs:
     for struct_name in struct_names:
         writeln(f, replacePlaceholder(init_template, struct_name))

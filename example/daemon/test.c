@@ -47,9 +47,9 @@
 #include <string.h>
 
 #include "btstack_client.h"
-#include "run_loop.h"
-#include "run_loop_posix.h"
-#include "hci_cmds.h"
+#include "btstack_run_loop.h"
+#include "btstack_run_loop_posix.h"
+#include "hci_cmd.h"
 
 // bd_addr_t addr = {0x00, 0x03, 0xc9, 0x3d, 0x77, 0x43 };  // Think Outside Keyboard
 // bd_addr_t addr = {0x00, 0x19, 0x1d, 0x90, 0x44, 0x68 };  // WiiMote
@@ -100,7 +100,7 @@ void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint
 }
 
 int main (int argc, const char * argv[]){
-	run_loop_init(run_loop_posix_get_instance());
+	btstack_run_loop_init(btstack_run_loop_posix_get_instance());
 	int err = bt_open();
 	if (err) {
 		printf("Failed to open connection to BTdaemon\n");
@@ -108,7 +108,7 @@ int main (int argc, const char * argv[]){
 	}
 	bt_register_packet_handler(packet_handler);
 	bt_send_cmd(&btstack_set_power_mode, HCI_POWER_ON );
-	run_loop_execute();
+	btstack_run_loop_execute();
 	bt_close();
 	return 0;
 }

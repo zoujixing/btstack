@@ -42,7 +42,7 @@
  *  Created by Matthias Ringwald on 4/29/09.
  */
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdio.h>
 
@@ -50,18 +50,18 @@
 
 #include <string.h>
 
-#include "debug.h"
+#include "btstack_debug.h"
 #include "hci.h"
 #include "hci_transport.h"
 
-static int  h4_process(struct data_source *ds);
+static int  h4_process(struct btstack_data_source *ds);
 static void dummy_handler(uint8_t packet_type, uint8_t *packet, uint16_t size); 
 
 typedef struct hci_transport_h4 {
     hci_transport_t transport;
-    data_source_t *ds;
+    btstack_data_source_t *ds;
     /* power management support, e.g. used by iOS */
-    timer_source_t sleep_timer;
+    btstack_timer_source_t sleep_timer;
 } hci_transport_h4_t;
 
 // single instance
@@ -73,7 +73,7 @@ static  void (*packet_handler)(uint8_t packet_type, uint8_t *packet, uint16_t si
 static uint8_t hci_packet_out[1+HCI_PACKET_BUFFER_SIZE]; // packet type + max(acl header + acl payload, event header + event data)
 static uint8_t hci_packet_in[1+HCI_PACKET_BUFFER_SIZE]; // packet type + max(acl header + acl payload, event header + event data)
 
-static int h4_open(void *transport_config){
+static int h4_open(const void *transport_config){
     int fd = mtk_bt_enable();
 
     if (fd < 0) {
@@ -82,20 +82,20 @@ static int h4_open(void *transport_config){
     }
 
     // set up data_source
-    hci_transport_h4->ds = (data_source_t*) malloc(sizeof(data_source_t));
+    hci_transport_h4->ds = (btstack_data_source_t*) malloc(sizeof(btstack_data_source_t));
     if (!hci_transport_h4->ds) return -1;
     hci_transport_h4->ds->fd = fd;
     hci_transport_h4->ds->process = h4_process;
-    run_loop_add_data_source(hci_transport_h4->ds);
+    btstack_run_loop_add_data_source(hci_transport_h4->ds);
     return 0;
 }
 
-static int h4_close(void *transport_config){
+static int h4_close(const void *transport_config){
 
     mtk_bt_disable(hci_transport_h4->ds->fd);
 
     // first remove run loop handler
-	run_loop_remove_data_source(hci_transport_h4->ds);
+	btstack_run_loop_remove_data_source(hci_transport_h4->ds);
     
     // free struct
     free(hci_transport_h4->ds);
@@ -121,7 +121,7 @@ static void   h4_register_packet_handler(void (*handler)(uint8_t packet_type, ui
     packet_handler = handler;
 }
 
-static int h4_process(struct data_source *ds) {
+static int h4_process(struct btstack_data_source *ds) {
     if (hci_transport_h4->ds->fd == 0) return -1;
 
     // read up to bytes_to_read data in
@@ -160,7 +160,7 @@ static void dummy_handler(uint8_t packet_type, uint8_t *packet, uint16_t size){
 }
 
 // get h4 singleton
-hci_transport_t * hci_transport_h4_posix_instance(void){
+hci_transport_t * hci_transport_h4_instance(void){
     if (hci_transport_h4 == NULL) {
         hci_transport_h4 = (hci_transport_h4_t*)malloc( sizeof(hci_transport_h4_t));
         hci_transport_h4->ds                                      = NULL;

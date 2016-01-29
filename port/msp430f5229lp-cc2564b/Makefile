@@ -36,27 +36,27 @@ CFLAGS += \
 LDFLAGS = -mmcu=${MCU}
 
 CORE   = \
-    hci_dump.c		          \
     btstack_memory.c          \
-    linked_list.c	          \
-    memory_pool.c             \
-    utils.c			          \
-    main.c 					  \
+    btstack_memory_pool.c       \
+    btstack_run_loop.c		    \
+    btstack_run_loop_embedded.c \
     hal_board.c	              \
-    hal_led.c 				  \
-    hal_usb.c                 \
-    hal_tick.c	              \
-    run_loop.c		          \
-    run_loop_embedded.c       \
-    hal_cpu.c                 \
     hal_compat.c              \
+    hal_cpu.c                 \
+    hal_led.c 				  \
+    hal_tick.c	              \
+    hal_usb.c                 \
+    hci_dump.c		          \
+    linked_list.c	          \
+    main.c 					  \
+    btstack_util.c			          \
 
 COMMON = \
     hal_uart_dma.c            \
-	bt_control_cc256x.c       \
+	btstack_chipset_cc256x.c       \
     hci.c			          \
-    hci_cmds.c		          \
-    hci_transport_h4_ehcill_dma.c \
+    hci_cmd.c		          \
+    hci_transport_h4_ehcill_embedded.c \
 	remote_device_db_memory.c \
 
 SPP = \

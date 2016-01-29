@@ -137,7 +137,7 @@ typedef enum{
 } gatt_client_mtu_t;
 
 typedef struct gatt_client{
-    linked_item_t    item;
+    btstack_linked_item_t    item;
     // TODO: rename gatt_client_state -> state
     gatt_client_state_t gatt_client_state;
 
@@ -181,11 +181,11 @@ typedef struct gatt_client{
     int      le_device_index;
     uint8_t  cmac[8];
 
-    timer_source_t gc_timeout;
+    btstack_timer_source_t gc_timeout;
 } gatt_client_t;
 
 typedef struct gatt_subclient {
-    linked_item_t   item;
+    btstack_linked_item_t   item;
     uint16_t        id;
     gatt_client_callback_t callback;
 } gatt_subclient_t;

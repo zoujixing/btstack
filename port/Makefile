@@ -11,14 +11,18 @@
 # - Microchip XC32
 
 SUBDIRS =  \
+			posix-cc2564b \
+			posix-csr \
+			posix-h4 \
+			posix-stlc2500d \
+			posix-tc35661 \
+			posix-wl183x \
+			libusb \
 			arduino \
 			ez430-rf2560 \
-			libusb \
 			msp-exp430f5438-cc2564b \
 			msp430f5229lp-cc2564b \
 			mtk \
-			posix-stlc2500d \
-			posix-wl183x \
 			stm32-f103rb-nucleo \
 
 EXCLUDED = \
@@ -26,9 +30,17 @@ EXCLUDED = \
 			ios \
 
 subdirs:
-	echo Building all platforms
+	echo Building all ports
 	for dir in $(SUBDIRS); do \
 	  $(MAKE) -C $$dir; \
 	done
 	echo Building daemon
 	cd daemon ; ./bootstrap.sh ; make
+
+clean:
+	echo Cleaning all ports
+	for dir in $(SUBDIRS); do \
+	  $(MAKE) -C $$dir clean; \
+	done
+	echo Cleaning daemon
+	cd daemon ; make clean

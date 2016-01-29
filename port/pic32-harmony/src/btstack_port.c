@@ -4,13 +4,13 @@
 
 #include "btstack_port.h"
 #include "system_config.h"
-#include "bt_control_csr.h"
-#include "run_loop.h"
-#include "run_loop_embedded.h"
+#include "btstack_chipset_csr.h"
+#include "btstack_run_loop.h"
+#include "btstack_run_loop_embedded.h"
 #include "hci_dump.h"
 #include "hci.h"
 #include "hci_transport.h"
-#include "debug.h"
+#include "btstack_debug.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -78,8 +78,8 @@ void hal_tick_set_handler(void (*handler)(void)){
 }
 
 static void msleep(uint32_t delay) {
-    uint32_t wake = run_loop_embedded_get_ticks() + delay / hal_tick_get_tick_period_in_ms();
-    while (wake > run_loop_embedded_get_ticks()){
+    uint32_t wake = btstack_run_loop_embedded_get_ticks() + delay / hal_tick_get_tick_period_in_ms();
+    while (wake > btstack_run_loop_embedded_get_ticks()){
         SYS_Tasks();
     };
 }
@@ -221,13 +221,13 @@ void BTSTACK_Initialize ( void )
     printf("\n\nBTstack_Initialize()\n");
 
     btstack_memory_init();
-    run_loop_init(run_loop_embedded_get_instance());
+    btstack_run_loop_init(btstack_run_loop_embedded_get_instance());
 
     hci_dump_open(NULL, HCI_DUMP_STDOUT);
 
-    hci_transport_t * transport = hci_transport_h4_dma_instance();
-    bt_control_t    * control   = bt_control_csr_instance();
-    hci_init(transport, &config, control, NULL);
+    const hci_transport_t * transport = hci_transport_h4_instance();
+    hci_init(transport, &config, NULL);
+    hci_set_chipset(btstack_chipset_csr_instance());
 
     // hci_power_control(HCI_POWER_ON);
     btstack_main(0, NULL);
@@ -252,6 +252,6 @@ void BTSTACK_Tasks(void){
     }
 
     // BTstack Run Loop
-    run_loop_embedded_execute_once();
+    btstack_run_loop_embedded_execute_once();
 }
 

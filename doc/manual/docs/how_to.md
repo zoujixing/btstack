@@ -63,8 +63,8 @@ an UART or an USB driver. Timers are used by BTstack to implement
 various Bluetooth-related timeouts. They can also be used to handle
 periodic events.
 
-Data sources and timers are represented by the *data_source_t* and
-*timer_source_t* structs respectively. Each of these structs contain a
+Data sources and timers are represented by the *btstack_data_source_t* and
+*btstack_timer_source_t* structs respectively. Each of these structs contain a
 linked list node and a pointer to a callback function. All active timers
 and data sources are kept in link lists. While the list of data sources
 is unsorted, the timers are sorted by expiration timeout for efficient
@@ -93,12 +93,12 @@ expects to get called periodically to keep its time, see Section
 [on time abstraction](#sec:timeAbstractionPorting) for more on the 
 tick hardware abstraction.
 
-The run loop is set up by calling *run_loop_init* function for
+The run loop is set up by calling *btstack_run_loop_init* function for
 embedded systems:
 
 <!-- -->
 
-    run_loop_init(run_loop_embedded_get_instance());
+    btstack_run_loop_init(btstack_run_loop_embedded_get_instance());
 
 The Run loop API is provided [here](appendix/apis/#sec:runLoopAPIAppendix). To
 enable the use of timers, make sure that you defined HAVE_TICK in the
@@ -128,28 +128,28 @@ requires four arguments. These are:
     when a Hardware Error is reported by the Bluetooth module. The
     callback allows for persistent logging or signaling of this failure.
 
-    Overall, the struct *bt_control_t* encapsulates common
+    Overall, the struct *btstack_control_t* encapsulates common
     functionality that is not covered by the Bluetooth specification. As
     an example, the *bt_con-trol_cc256x_in-stance* function returns a
     pointer to a control struct suitable for the CC256x chipset.
 
 <!-- -->
 
-    bt_control_t * control = bt_control_cc256x_instance();
+    btstack_control_t * control = btstack_chipset_cc256x_instance();
 
 -   *HCI Transport implementation*: On embedded systems, a Bluetooth
     module can be connected via USB or an UART port. BTstack implements
     two UART based protocols: HCI UART Transport Layer (H4) and H4 with
     eHCILL support, a lightweight low-power variant by Texas
     Instruments. These are accessed by linking the appropriate file 
-    [src/hci_transport_h4_dma.c]() resp. [src/hci_transport_h4_ehcill_dma.c]()
+    [src/hci_transport_h4_embedded.c]() resp. [src/hci_transport_h4_ehcill_embedded.c]()
     and then getting a pointer to HCI Transport implementation.
     For more information on adapting HCI Transport to different
     environments, see [here](porting/#sec:hciTransportPorting).
 
 <!-- -->
 
-    hci_transport_t * transport = hci_transport_h4_dma_instance();
+    hci_transport_t * transport = hci_transport_h4_instance();
 
 -   *HCI Transport configuration*: As the configuration of the UART used
     in the H4 transport interface are not standardized, it has to be
@@ -242,8 +242,8 @@ These handlers are registered with the functions listed in Table
                   Packet Handler Registering Function
               HCI packet handler *hci_register_packet_handler*
             L2CAP packet handler *l2cap_register_packet_handler*
-    L2CAP service packet handler *l2cap_register_service_internal*
-    L2CAP channel packet handler *l2cap_create_channel_internal*
+    L2CAP service packet handler *l2cap_register_service*
+    L2CAP channel packet handler *l2cap_create_channel*
            RFCOMM packet handler *rfcomm_register_packet_handler*
   ------------------------------ --------------------------------------
 
@@ -257,7 +257,7 @@ data packets are delivered to different packet handlers. Outgoing
 connections are used access remote services, incoming connections are
 used to provide services. For incoming connections, the packet handler
 specified by *l2cap_register_service* is used. For outgoing
-connections, the handler provided by *l2cap_create_channel_internal*
+connections, the handler provided by *l2cap_create_channel*
 is used. Currently, RFCOMM provides only a single packet handler
 specified by *rfcomm_register_packet_handler* for all RFCOMM
 connections, but this will be fixed in the next API overhaul.
@@ -273,10 +273,10 @@ application could use three packet handlers: one to handle HCI events
 during discovery of a keyboard registered by
 *l2cap_register_packet_handler*; one that will be registered to an
 outgoing L2CAP channel to connect to keyboard and to receive keyboard
-data registered by *l2cap_create_channel_internal*; after that
+data registered by *l2cap_create_channel*; after that
 keyboard can reconnect by itself. For this, you need to register L2CAP
 services for the HID Control and HID Interrupt PSMs using
-*l2cap_register_service_internal*. In this call, you’ll also specify
+*l2cap_register_service*. In this call, you’ll also specify
 a packet handler to accept and receive keyboard data.
 
 
@@ -308,5 +308,5 @@ In addition to the HCI packets, you can also enable BTstack's debug information 
     #define ENABLE_LOG_INFO 
     #define ENABLE_LOG_ERROR
 
-to the btstack-config.h and recompiling your application.
+to the btstack_config.h and recompiling your application.
 

@@ -1,4 +1,4 @@
-/*
+const /*
  * Copyright (C) 2015 BlueKitchen GmbH
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,13 +38,13 @@
 /*
  *  hci_h4_transport_wiced.c
  *
- *  HCI Transport API implementation for basic H4 protocol for use with run_loop_wiced.c
+ *  HCI Transport API implementation for basic H4 protocol for use with btstack_run_loop_wiced.c
  */
 
-#include "btstack-config.h"
-#include "run_loop_wiced.h"
+#include "btstack_config.h"
+#include "btstack_run_loop_wiced.h"
 
-#include "debug.h"
+#include "btstack_debug.h"
 #include "hci.h"
 #include "hci_transport.h"
 #include "platform_bluetooth.h"
@@ -74,10 +74,10 @@ static void dummy_handler(uint8_t packet_type, uint8_t *packet, uint16_t size);
 
 typedef struct hci_transport_h4 {
     hci_transport_t transport;
-    data_source_t *ds;
+    btstack_data_source_t *ds;
     int uart_fd;    // different from ds->fd for HCI reader thread
     /* power management support, e.g. used by iOS */
-    timer_source_t sleep_timer;
+    btstack_timer_source_t sleep_timer;
 } hci_transport_h4_t;
 
 // single instance
@@ -157,7 +157,7 @@ static wiced_result_t h4_rx_worker_receive_packet(void * arg){
 #endif
 
         // deliver packet on main thread
-        run_loop_wiced_execute_code_on_main_thread(&h4_main_deliver_packet, NULL);
+        btstack_run_loop_wiced_execute_code_on_main_thread(&h4_main_deliver_packet, NULL);
         return WICED_SUCCESS;
     }
 }
@@ -174,7 +174,7 @@ static wiced_result_t h4_tx_worker_send_packet(void * arg){
     // blocking send
     platform_uart_transmit_bytes(wiced_bt_uart_driver, tx_worker_data_buffer, tx_worker_data_size);
     // let stack know
-    run_loop_wiced_execute_code_on_main_thread(&h4_main_notify_packet_send, NULL);
+    btstack_run_loop_wiced_execute_code_on_main_thread(&h4_main_notify_packet_send, NULL);
     return WICED_SUCCESS;
 }
 
@@ -227,7 +227,7 @@ static int h4_set_baudrate(uint32_t baudrate){
     return 0;
 }
 
-static int h4_open(void *transport_config){
+static int h4_open(const void *transport_config){
 
     // UART config
     wiced_uart_config_t uart_config =
@@ -285,7 +285,7 @@ static int h4_open(void *transport_config){
     return 0;
 }
 
-static int h4_close(void *transport_config){
+static int h4_close(const void *transport_config){
     // not implementd
     return 0;
 }
@@ -320,7 +320,7 @@ static void dummy_handler(uint8_t packet_type, uint8_t *packet, uint16_t size){
 }
 
 // get h4 singleton
-hci_transport_t * hci_transport_h4_wiced_instance() {
+hci_transport_t * hci_transport_h4_instance() {
     if (hci_transport_h4 == NULL) {
         hci_transport_h4 = (hci_transport_h4_t*)malloc( sizeof(hci_transport_h4_t));
         hci_transport_h4->ds                                      = NULL;

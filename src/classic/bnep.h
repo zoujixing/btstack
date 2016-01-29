@@ -44,7 +44,7 @@
 #ifndef __BNEP_H
 #define __BNEP_H
  
-#include "utils.h"
+#include "btstack_util.h"
 
 #include <stdint.h>
 
@@ -100,7 +100,7 @@ typedef struct {
 // note: spec mandates single multplexer per device combination
 typedef struct {
     // linked list - assert: first field
-    linked_item_t      item;
+    btstack_linked_item_t      item;
 
     BNEP_CHANNEL_STATE state;	          // Channel state
 
@@ -132,7 +132,7 @@ typedef struct {
     uint16_t             multicast_filter_out_count;
 
 
-    timer_source_t     timer;             // Timeout timer
+    btstack_timer_source_t     timer;             // Timeout timer
     int                timer_active;      // Is a timer running?
     int                retry_count;       // number of retries for CONTROL SETUP MSG
     // l2cap packet handler
@@ -141,7 +141,7 @@ typedef struct {
 
 /* Internal BNEP service descriptor */
 typedef struct {
-    linked_item_t    item;           // linked list - assert: first field
+    btstack_linked_item_t    item;           // linked list - assert: first field
     uint16_t         service_uuid;   // Service class: PANU, NAP, GN
     uint16_t         max_frame_size; // incomming max. frame size
     

@@ -35,9 +35,9 @@
  *
  */
 
-#include "bt_control_bcm.h"
 #include "btstack.h"
-#include "run_loop_wiced.h"
+#include "btstack_control_bcm.h"
+#include "btstack_run_loop_wiced.h"
 
 #include "generated_mac_address.txt"
 
@@ -86,16 +86,16 @@ void application_start(void){
 
     // start with BTstack init - especially configure HCI Transport
     btstack_memory_init();
-    run_loop_init(run_loop_wiced_get_instance());
+    btstack_run_loop_init(btstack_run_loop_wiced_get_instance());
     
     // enable full log output while porting
     // hci_dump_open(NULL, HCI_DUMP_STDOUT);
 
     // init HCI
-    hci_transport_t    * transport = hci_transport_h4_wiced_instance();
-    bt_control_t       * control   = bt_control_bcm_instance();
+    const hci_transport_t * transport = hci_transport_h4_instance();
     remote_device_db_t * remote_db = (remote_device_db_t *) &remote_device_db_memory;
-    hci_init(transport, (void*) &hci_transport_config_uart, control, remote_db);
+    hci_init(transport, (void*) &hci_transport_config_uart, remote_db);
+    hci_set_chipset(btstack_chipset_bcm_instance());
 
     // use WIFI Mac address + 1 for Bluetooth
     bd_addr_t dummy = { 1,2,3,4,5,6};
@@ -107,7 +107,7 @@ void application_start(void){
     btstack_main();
 
     // go
-    run_loop_execute();
+    btstack_run_loop_execute();
 
     while (1){};
 }

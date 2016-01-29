@@ -42,7 +42,7 @@
 #ifndef __REMOTE_DEVICE_DB_H
 #define __REMOTE_DEVICE_DB_H
 
-#include "utils.h"
+#include "btstack_util.h"
 #include "gap.h"
 
 #if defined __cplusplus
@@ -67,9 +67,6 @@ typedef struct {
     void (*put_name)(bd_addr_t bd_addr, device_name_t *device_name);
     void (*delete_name)(bd_addr_t bd_addr);
 
-    // persistent rfcomm channel
-    uint8_t (*persistent_rfcomm_channel)(char *servicename);
-
 } remote_device_db_t;
 
 /*
@@ -92,11 +89,11 @@ const remote_device_db_t * remote_device_db_fs_instance(void);
 /* API_END */
 
 // MARK: non-persistent implementation
-#include "bk_linked_list.h"
+#include "btstack_linked_list.h"
 #define MAX_NAME_LEN 32
 typedef struct {
     // linked list - assert: first field
-    linked_item_t    item;
+    btstack_linked_item_t    item;
     
     bd_addr_t bd_addr;
 } db_mem_device_t;
@@ -114,7 +111,7 @@ typedef struct {
 
 typedef struct {
     // linked list - assert: first field
-    linked_item_t    item;
+    btstack_linked_item_t    item;
     
     char service_name[MAX_NAME_LEN];
     uint8_t channel;

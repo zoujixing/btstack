@@ -18,25 +18,25 @@ VPATH += $(BTSTACK_ROOT)/chipset/cc256x
 CORE = \
 	main.c 					  \
     btstack_memory.c          \
-    bk_linked_list.c	      \
-    memory_pool.c             \
+    btstack_linked_list.c	      \
+    btstack_memory_pool.c             \
     run_loop.c		          \
-    run_loop_embedded.c
+    btstack_run_loop_embedded.c
 
 COMMON = \
-	bt_control_cc256x.c   \
+	btstack_chipset_cc256x.c   \
 	bluetooth_init_cc2564B_1.2_BT_Spec_4.1.c   \
     hci.c			          \
-    hci_cmds.c		          \
+    hci_cmd.c		          \
     hci_dump.c		          \
-    hci_transport_h4_ehcill_dma.c \
+    hci_transport_h4_ehcill_embedded.c \
     l2cap.c			          \
     l2cap_signaling.c         \
 	remote_device_db_memory.c \
 	rfcomm.c			      \
     sdp.c			          \
     sdp_util.c                \
-    utils.c			          \
+    btstack_util.c			          \
     sdp_parser.c              \
     sdp_client.c              \
     sdp_query_util.c		  \
@@ -68,11 +68,13 @@ include libopencm3.stm32f1.mk
 # fetch and convert init scripts
 include ${BTSTACK_ROOT}/chipset/cc256x/Makefile.inc
 
-# clean:
-#	rm -f *.map *.o *.d *.out *.elf *.bin *.hex ../driver/*.o ../../src/*.o ../../ble/*.o ../firmware/*.o ${BTSTACK_ROOT}/chipset/cc256x/*.o ${BTSTACK_ROOT}/src/*.o
+clean:
+	rm -f *.map *.o *.d *.out *.elf *.bin *.hex 
+	make -C libopencm3 clean
 
 # git clone and compile libopencm3
 libopencm3/lib/libopencm3_stm32f1.a:
+	rm -rf libopencm3
 	git clone https://github.com/libopencm3/libopencm3.git
 	make -C libopencm3
 

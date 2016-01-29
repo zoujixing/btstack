@@ -45,12 +45,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "run_loop.h"
-#include "hci_cmds.h"
-#include "utils.h"
-#include "btstack-config.h"
+#include "btstack_run_loop.h"
+#include "hci_cmd.h"
+#include "btstack_util.h"
+#include "btstack_config.h"
 
-#include "debug.h"
+#include "btstack_debug.h"
 #include "btstack_memory.h"
 #include "hci.h"
 #include "hci_dump.h"

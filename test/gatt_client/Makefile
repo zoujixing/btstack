@@ -9,21 +9,21 @@ LDFLAGS +=  -lCppUTest -lCppUTestExt
 
 VPATH += ${BTSTACK_ROOT}/src
 VPATH += ${BTSTACK_ROOT}/src/ble 
-VPATH += ${BTSTACK_ROOT}/platform/posix/src
+VPATH += ${BTSTACK_ROOT}/platform/posix
 
 COMMON = \
     ad_parser.c                 \
     att.c     					\
     att_dispatch.c       	    \
-    bk_linked_list.c		    \
+    btstack_linked_list.c		    \
     btstack_memory.c			\
     gatt_client.c               \
-    hci_cmds.c					\
+    hci_cmd.c					\
     hci_dump.c     				\
     le_device_db_memory.c       \
-    memory_pool.c			    \
+    btstack_memory_pool.c			    \
     mock.c                      \
-    utils.c			            \
+    btstack_util.c			            \
 	
 
 COMMON_OBJ = $(COMMON:.c=.o)

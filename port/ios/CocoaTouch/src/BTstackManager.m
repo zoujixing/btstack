@@ -32,8 +32,8 @@
 #import <BTstack/BTstackManager.h>
 
 #import "btstack.h"
-#import "run_loop.h"
-#import "run_loop_cocoa.h"
+#import "btstack_run_loop.h"
+#import "btstack_run_loop_cocoa.h"
 #import <btstack/BTDevice.h>
 
 #define INQUIRY_INTERVAL 3
@@ -71,7 +71,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 	[self setListeners:[[NSMutableSet alloc] init]];
 	
 	// Use Cocoa run loop
-	run_loop_init(run_loop_cocoa_get_instance());
+	btstack_run_loop_init(btstack_run_loop_cocoa_get_instance());
 	
 	// our packet handler
 	bt_register_packet_handler(packet_handler);

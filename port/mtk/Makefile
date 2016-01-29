@@ -13,27 +13,27 @@ BTSTACK_ROOT = ../..
 CFLAGS += -I$(BTSTACK_ROOT)/include
 CFLAGS += -I$(BTSTACK_ROOT)/src/
 CFLAGS += -I$(BTSTACK_ROOT)/ble
-CFLAGS += -I$(BTSTACK_ROOT)/platform/daemon/src
-CFLAGS += -I$(BTSTACK_ROOT)/platform/posix/src
+CFLAGS += -I$(BTSTACK_ROOT)/platform/daemon
+CFLAGS += -I$(BTSTACK_ROOT)/platform/posix
 CFLAGS += -I.
 
 VPATH += $(BTSTACK_ROOT)/src
 VPATH += $(BTSTACK_ROOT)/src/ble
 VPATH += $(BTSTACK_ROOT)/src/classic
-VPATH += $(BTSTACK_ROOT)/platform/posix/src
-VPATH += $(BTSTACK_ROOT)/platform/daemon/src
+VPATH += $(BTSTACK_ROOT)/platform/posix
+VPATH += $(BTSTACK_ROOT)/platform/daemon
 VPATH += $(BTSTACK_ROOT)/example/daemon
 
 libBTstack_OBJS  = 		 \
-	hci_cmds.o           \
-	hci_dump.o           \
-	bk_linked_list.o     \
-	run_loop.o           \
-	sdp_util.o           \
-	utils.o 		     \
 	btstack.o            \
-	run_loop_posix.o     \
+	btstack_linked_list.o   \
+	btstack_run_loop.o      \
+	btstack_run_loop_posix.o     \
+	hci_cmd.o           \
+	hci_dump.o           \
+	sdp_util.o           \
 	socket_connection.o  \
+	utils.o 		     \
 
 BTdaemon_OBJS = $(libBTstack_OBJS)   \
 	att_dispatch.o              \
@@ -57,19 +57,19 @@ BTdaemon_OBJS = $(libBTstack_OBJS)   \
 	daemon.o 				    \
 	hci_transport_h4_mtk.o      \
 
-all: $(TOOLCHAIN) version BTstackDaemon libBTstack.so BTstackDaemonRespawn inquiry le_scan rfcomm-echo dist
+all: $(TOOLCHAIN) version BTstackDaemon libBTstack.so BTstackDaemonRespawn inquiry le_scan rfcomm_echo dist
 
 dist:
 	rm -f *.o
 
 clean:
-	rm -f BTstackDaemon BTstackDaemonRespawn le_scan inquiry rfcomm-echo *.so *.o
+	rm -f BTstackDaemon BTstackDaemonRespawn le_scan inquiry rfcomm_echo *.so *.o
 
 $(TOOLCHAIN):
 	$(NDK)/build/tools/make-standalone-toolchain.sh --install-dir=$@
 
-libbluetoothdrv.so: bluetoothdrv-stub.o
-	$(GCC) $(LDFLAGS) -shared -o libbluetoothdrv.so bluetoothdrv-stub.o
+libbluetoothdrv.so: bluetoothdrv_stub.o
+	$(GCC) $(LDFLAGS) -shared -o libbluetoothdrv.so bluetoothdrv_stub.o
 
 .c.o:
 	$(GCC) $(CFLAGS) -o $@ -c $<
@@ -85,7 +85,7 @@ shell:
 
 version:
 	$(BTSTACK_ROOT)/tool/get_version.sh
-	grep BTSTACK_DATE $(BTSTACK_ROOT)/src/version.h
+	grep BTSTACK_DATE $(BTSTACK_ROOT)/src/btstack_version.h
 
 BTstackDaemon: $(BTdaemon_OBJS) libbluetoothdrv.so
 	$(GCC) $(LDFLAGS) -o $@ libbluetoothdrv.so $^
@@ -100,8 +100,8 @@ libBTstack.so: $(libBTstack_OBJS)
 inquiry: inquiry.o
 	$(GCC) $(LDFLAGS) -Wl,-rpath,/system/lib libBTstack.so -o $@ inquiry.o
 
-rfcomm-echo: rfcomm-echo.o
-	$(GCC) $(LDFLAGS) -Wl,-rpath,/system/lib libBTstack.so -o $@ rfcomm-echo.o
+rfcomm_echo: rfcomm_echo.o
+	$(GCC) $(LDFLAGS) -Wl,-rpath,/system/lib libBTstack.so -o $@ rfcomm_echo.o
 
 le_scan: le_scan.o
 	$(GCC) $(LDFLAGS) -Wl,-rpath,/system/lib libBTstack.so -o $@ le_scan.o

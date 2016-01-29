@@ -7,19 +7,19 @@
 #include "classic/remote_device_db.h"
 #include "btstack_memory.h"
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
-extern bk_linked_list_t db_mem_link_keys ;
-extern bk_linked_list_t db_mem_names ;
+extern btstack_linked_list_t db_mem_link_keys ;
+extern btstack_linked_list_t db_mem_names ;
 // const extern "C" db_mem_device_name_t * btstack_memory_db_mem_device_name_get(void);
 // const extern "C" void btstack_memory_init(void);
 
-void dump(bk_linked_list_t list){
+void dump(btstack_linked_list_t list){
     printf("dump:\n");
 
     int i;
-    linked_item_t *it;
-    for (it = (linked_item_t *) list, i = 1; it ; it = it->next, i++){
+    btstack_linked_item_t *it;
+    for (it = (btstack_linked_item_t *) list, i = 1; it ; it = it->next, i++){
         db_mem_device_t * item = (db_mem_device_t *) it;
         db_mem_device_name_t * item1 = (db_mem_device_name_t *) it;
         db_mem_device_link_key_t * item2 = (db_mem_device_link_key_t *) it;

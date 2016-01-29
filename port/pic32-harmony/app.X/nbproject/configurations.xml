@@ -11,15 +11,15 @@
             <itemPath>../src/system_config/bk-audio-dk/system_config.h</itemPath>
           </logicalFolder>
         </logicalFolder>
-        <itemPath>../src/app_debug.h</itemPath>
-        <itemPath>../src/btstack-config.h</itemPath>
+        <itemPath>../src/app_btstack_debug.h</itemPath>
+        <itemPath>../src/btstack_config.h</itemPath>
         <itemPath>../src/btstack_port.h</itemPath>
         <itemPath>../src/app.h</itemPath>
       </logicalFolder>
       <logicalFolder name="f3" displayName="btstack" projectFiles="true">
         <logicalFolder name="ble" displayName="ble" projectFiles="true">
           <itemPath>../../../src/ble/ad_parser.h</itemPath>
-          <itemPath>../../../src/ble/ancs_client_lib.h</itemPath>
+          <itemPath>../../../src/ble/ancs_client.h</itemPath>
           <itemPath>../../../src/ble/att.h</itemPath>
           <itemPath>../../../src/ble/att_dispatch.h</itemPath>
           <itemPath>../../../src/ble/att_server.h</itemPath>
@@ -34,22 +34,22 @@
           <itemPath>../../../platform/embedded/hal_uart_dma.h</itemPath>
         </logicalFolder>
         <logicalFolder name="src" displayName="src" projectFiles="true">
-          <itemPath>../../../src/hci_cmds.h</itemPath>
-          <itemPath>../../../src/bk_linked_list.h</itemPath>
-          <itemPath>../../../src/memory_pool.h</itemPath>
+          <itemPath>../../../src/hci_cmd.h</itemPath>
+          <itemPath>../../../src/btstack_linked_list.h</itemPath>
+          <itemPath>../../../src/btstack_memory_pool.h</itemPath>
           <itemPath>../../../src/run_loop.h</itemPath>
-          <itemPath>../../../src/utils.h</itemPath>
+          <itemPath>../../../src/btstack_util.h</itemPath>
           <itemPath>../../../src/bnep.h</itemPath>
           <itemPath>../../../src/bt_control.h</itemPath>
           <itemPath>../../../src/btstack_memory.h</itemPath>
-          <itemPath>../../../src/debug.h</itemPath>
+          <itemPath>../../../src/btstack_debug.h</itemPath>
           <itemPath>../../../src/gap.h</itemPath>
           <itemPath>../../../src/hci.h</itemPath>
           <itemPath>../../../src/hci_dump.h</itemPath>
           <itemPath>../../../src/hci_transport.h</itemPath>
           <itemPath>../../../src/l2cap.h</itemPath>
           <itemPath>../../../src/l2cap_signaling.h</itemPath>
-          <itemPath>../../../src/run_loop_private.h</itemPath>
+          <itemPath>../../../src/btstack_run_loop_private.h</itemPath>
         </logicalFolder>
         <logicalFolder name="classic" displayName="classic" projectFiles="true">
           <itemPath>../../../src/classic/sdp_util.h</itemPath>
@@ -117,29 +117,29 @@
           <itemPath>../../../src/ble/sm.c</itemPath>
         </logicalFolder>
         <logicalFolder name="chipset-csr" displayName="chipset-csr" projectFiles="true">
-          <itemPath>../../../chipset/csr/bt_control_csr.c</itemPath>
+          <itemPath>../../../chipset/csr/btstack_chipset_csr.c</itemPath>
         </logicalFolder>
         <logicalFolder name="src" displayName="src" projectFiles="true">
           <itemPath>../../../src/btstack_memory.c</itemPath>
           <itemPath>../../../src/hci.c</itemPath>
-          <itemPath>../../../src/hci_cmds.c</itemPath>
+          <itemPath>../../../src/hci_cmd.c</itemPath>
           <itemPath>../../../src/hci_dump.c</itemPath>
-          <itemPath>../../../src/hci_transport_h4_dma.c</itemPath>
+          <itemPath>../../../src/hci_transport_h4_embedded.c</itemPath>
           <itemPath>../../../src/l2cap.c</itemPath>
           <itemPath>../../../src/l2cap_signaling.c</itemPath>
-          <itemPath>../../../src/bk_linked_list.c</itemPath>
-          <itemPath>../../../src/memory_pool.c</itemPath>
+          <itemPath>../../../src/btstack_linked_list.c</itemPath>
+          <itemPath>../../../src/btstack_memory_pool.c</itemPath>
           <itemPath>../../../src/classic/remote_device_db_memory.c</itemPath>
           <itemPath>../../../src/classic/rfcomm.c</itemPath>
-          <itemPath>../../../src/run_loop.c</itemPath>
-          <itemPath>../../../src/run_loop_embedded.c</itemPath>
+          <itemPath>../../../src/btstack_run_loop.c</itemPath>
+          <itemPath>../../../src/btstack_run_loop_embedded.c</itemPath>
           <itemPath>../../../src/classic/sdp.c</itemPath>
           <itemPath>../../../src/classic/sdp_client.c</itemPath>
           <itemPath>../../../src/classic/sdp_parser.c</itemPath>
           <itemPath>../../../src/classic/sdp_query_rfcomm.c</itemPath>
           <itemPath>../../../src/classic/sdp_query_util.c</itemPath>
           <itemPath>../../../src/classic/sdp_util.c</itemPath>
-          <itemPath>../../../src/utils.c</itemPath>
+          <itemPath>../../../src/btstack_util.c</itemPath>
         </logicalFolder>
       </logicalFolder>
       <logicalFolder name="f2" displayName="framework" projectFiles="true">

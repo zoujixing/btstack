@@ -44,12 +44,12 @@ Implementation:
    * call handler on every element: int handle_element(uint8_t element, void *context) - done?
  * Dispatch packets for protocols implemented by BTdaemon
    * add packet_handler to l2cap_service_t and l2cap_channel_t
-     * pass acl/event handler to l2cap_register_service_internal
+     * pass acl/event handler to l2cap_register_service
      * copy acl/event handler to l2cap_channel_t
      * if specified, call custom packet_handler instead of general one 
    * acl -> l2cap -> l2cap_channel -> acl/event handler OR daemon
  * LinkedList of service records
-   * alloc { linked_list_item_t ; ServiceRecord }
+   * alloc { btstack_linked_list_item_t ; ServiceRecord }
    * add service record: service record -> service record handle or 0
    * remove service record: service record handle (32bit)
  * SDP as part of stack itself

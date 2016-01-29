@@ -46,14 +46,14 @@
 #include <string.h> // memcpy
 #include <stdint.h>
 
-#include "hci_cmds.h"
-#include "utils.h"
+#include "hci_cmd.h"
+#include "btstack_util.h"
 #include "classic/sdp_util.h"
 
 #include "btstack_memory.h"
 #include "hci.h"
 #include "hci_dump.h"
-#include "debug.h"
+#include "btstack_debug.h"
 #include "bnep.h"
 
 #include "l2cap.h"
@@ -61,8 +61,8 @@
 #define BNEP_CONNECTION_TIMEOUT_MS 10000
 #define BNEP_CONNECTION_MAX_RETRIES 1
 
-static bk_linked_list_t bnep_services = NULL;
-static bk_linked_list_t bnep_channels = NULL;
+static btstack_linked_list_t bnep_services = NULL;
+static btstack_linked_list_t bnep_channels = NULL;
 
 static gap_security_level_t bnep_security_level;
 
@@ -610,9 +610,9 @@ int bnep_set_multicast_filter(uint16_t bnep_cid,  bnep_multi_filter_t *filter, u
 }
 
 /* BNEP timeout timer helper function */
-static void bnep_channel_timer_handler(timer_source_t *timer)
+static void bnep_channel_timer_handler(btstack_timer_source_t *timer)
 {
-    bnep_channel_t *channel = (bnep_channel_t *)linked_item_get_user((linked_item_t *) timer);
+    bnep_channel_t *channel = (bnep_channel_t *)btstack_linked_item_get_user((btstack_linked_item_t *) timer);
     // retry send setup connection at least one time
     if (channel->state == BNEP_CHANNEL_STATE_WAIT_FOR_CONNECTION_RESPONSE){
         if (channel->retry_count < BNEP_CONNECTION_MAX_RETRIES){
@@ -633,7 +633,7 @@ static void bnep_channel_timer_handler(timer_source_t *timer)
 static void bnep_channel_stop_timer(bnep_channel_t *channel)
 {
     if (channel->timer_active) {
-        run_loop_remove_timer(&channel->timer);
+        btstack_run_loop_remove_timer(&channel->timer);
         channel->timer_active = 0;
     }
 }
@@ -644,10 +644,10 @@ static void bnep_channel_start_timer(bnep_channel_t *channel, int timeout)
     bnep_channel_stop_timer(channel);
 
     /* Start bnep channel timeout check timer */
-    run_loop_set_timer(&channel->timer, timeout);
+    btstack_run_loop_set_timer(&channel->timer, timeout);
     channel->timer.process = bnep_channel_timer_handler;
-    linked_item_set_user((linked_item_t*) &channel->timer, channel);
-    run_loop_add_timer(&channel->timer);
+    btstack_linked_item_set_user((btstack_linked_item_t*) &channel->timer, channel);
+    btstack_run_loop_add_timer(&channel->timer);
     channel->timer_active = 1;    
 }
 
@@ -692,15 +692,15 @@ static bnep_channel_t * bnep_channel_create_for_addr(bd_addr_t addr)
     channel->retry_count = 0;
 
     /* Finally add it to the channel list */
-    linked_list_add(&bnep_channels, (linked_item_t *) channel);
+    btstack_linked_list_add(&bnep_channels, (btstack_linked_item_t *) channel);
     
     return channel;
 }
 
 static bnep_channel_t* bnep_channel_for_addr(bd_addr_t addr)
 {
-    linked_item_t *it;
-    for (it = (linked_item_t *) bnep_channels; it ; it = it->next){
+    btstack_linked_item_t *it;
+    for (it = (btstack_linked_item_t *) bnep_channels; it ; it = it->next){
         bnep_channel_t *channel = ((bnep_channel_t *) it);
         if (BD_ADDR_CMP(addr, channel->remote_addr) == 0) {
             return channel;
@@ -711,8 +711,8 @@ static bnep_channel_t* bnep_channel_for_addr(bd_addr_t addr)
 
 static bnep_channel_t * bnep_channel_for_l2cap_cid(uint16_t l2cap_cid)
 {
-    linked_item_t *it;
-    for (it = (linked_item_t *) bnep_channels; it ; it = it->next){
+    btstack_linked_item_t *it;
+    for (it = (btstack_linked_item_t *) bnep_channels; it ; it = it->next){
         bnep_channel_t *channel = ((bnep_channel_t *) it);
         if (channel->l2cap_cid == l2cap_cid) {
             return channel;
@@ -723,8 +723,8 @@ static bnep_channel_t * bnep_channel_for_l2cap_cid(uint16_t l2cap_cid)
 
 static bnep_service_t * bnep_service_for_uuid(uint16_t uuid)
 {
-    linked_item_t *it;
-    for (it = (linked_item_t *) bnep_services; it ; it = it->next){
+    btstack_linked_item_t *it;
+    for (it = (btstack_linked_item_t *) bnep_services; it ; it = it->next){
         bnep_service_t * service = ((bnep_service_t *) it);
         if ( service->service_uuid == uuid){
             return service;
@@ -735,7 +735,7 @@ static bnep_service_t * bnep_service_for_uuid(uint16_t uuid)
 
 static void bnep_channel_free(bnep_channel_t *channel)
 {
-    linked_list_remove( &bnep_channels, (linked_item_t *) channel);
+    btstack_linked_list_remove( &bnep_channels, (btstack_linked_item_t *) channel);
     btstack_memory_bnep_channel_free(channel);
 }
 
@@ -755,7 +755,7 @@ static void bnep_channel_finalize(bnep_channel_t *channel)
     
     /* Free ressources and then close the l2cap channel */
     bnep_channel_free(channel);
-    l2cap_disconnect_internal(l2cap_cid, 0x13);
+    l2cap_disconnect(l2cap_cid, 0x13);
 }
 
 static int bnep_handle_connection_request(bnep_channel_t *channel, uint8_t *packet, uint16_t size)
@@ -1173,7 +1173,7 @@ static int bnep_hci_event_handler(uint8_t *packet, uint16_t size)
 
             if (channel) {                
                 log_error("INCOMING_CONNECTION (l2cap_cid 0x%02x) for PSM_BNEP => decline - channel already exists", l2cap_cid);
-                l2cap_decline_connection_internal(l2cap_cid,  0x04);    // no resources available
+                l2cap_decline_connection(l2cap_cid,  0x04);    // no resources available
                 return 1;
             }
             
@@ -1182,7 +1182,7 @@ static int bnep_hci_event_handler(uint8_t *packet, uint16_t size)
 
             if (!channel) {
                 log_error("INCOMING_CONNECTION (l2cap_cid 0x%02x) for PSM_BNEP => decline - no memory left", l2cap_cid);
-                l2cap_decline_connection_internal(l2cap_cid,  0x04);    // no resources available
+                l2cap_decline_connection(l2cap_cid,  0x04);    // no resources available
                 return 1;
             }
 
@@ -1197,7 +1197,7 @@ static int bnep_hci_event_handler(uint8_t *packet, uint16_t size)
             bnep_channel_start_timer(channel, BNEP_CONNECTION_TIMEOUT_MS);
             
             log_info("L2CAP_EVENT_INCOMING_CONNECTION (l2cap_cid 0x%02x) for PSM_BNEP => accept", l2cap_cid);
-            l2cap_accept_connection_internal(l2cap_cid);
+            l2cap_accept_connection(l2cap_cid);
             return 1;
             
         /* Outgoing L2CAP connection has been opened -> store l2cap_cid, remote_addr */
@@ -1507,10 +1507,10 @@ static void bnep_channel_state_machine(bnep_channel_t* channel, bnep_channel_eve
 /* Process oustanding signaling tasks */
 static void bnep_run(void)
 {
-    linked_item_t *it;
-    linked_item_t *next;
+    btstack_linked_item_t *it;
+    btstack_linked_item_t *next;
     
-    for (it = (linked_item_t *) bnep_channels; it ; it = next){
+    for (it = (btstack_linked_item_t *) bnep_channels; it ; it = next){
 
         next = it->next;    // be prepared for removal of channel in state machine
 
@@ -1607,7 +1607,7 @@ uint8_t bnep_register_service(uint16_t service_uuid, uint16_t max_frame_size)
     service->service_uuid    = service_uuid;
 
     /* Add to services list */
-    linked_list_add(&bnep_services, (linked_item_t *) service);
+    btstack_linked_list_add(&bnep_services, (btstack_linked_item_t *) service);
     
     return 0;
 }
@@ -1621,7 +1621,7 @@ void bnep_unregister_service(uint16_t service_uuid)
         return;
     }
 
-    linked_list_remove(&bnep_services, (linked_item_t *) service);
+    btstack_linked_list_remove(&bnep_services, (btstack_linked_item_t *) service);
     btstack_memory_bnep_service_free(service);
     service = NULL;
     
