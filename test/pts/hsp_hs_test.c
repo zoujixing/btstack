@@ -64,7 +64,7 @@
 
 #include "hci.h"
 #include "l2cap.h"
-#include "classic/sdp.h"
+#include "classic/sdp_server.h"
 #include "btstack_debug.h"
 #include "hsp_hs.h"
 #include "stdin_support.h"
@@ -113,7 +113,7 @@ static  PaStream * stream;
 static void try_send_sco(void){
     printf("try send handle %x\n", sco_handle);
     if (!sco_handle) return;
-    if (!hci_can_send_sco_packet_now(sco_handle)) {
+    if (!hci_can_send_sco_packet_now()) {
         printf("try_send_sco, cannot send now\n");
         return;
     }
@@ -121,7 +121,7 @@ static void try_send_sco(void){
     hci_reserve_packet_buffer();
     uint8_t * sco_packet = hci_get_outgoing_packet_buffer();
     // set handle + flags
-    bt_store_16(sco_packet, 0, sco_handle);
+    little_endian_store_16(sco_packet, 0, sco_handle);
     // set len
     sco_packet[2] = frames_per_packet;
     int i;
@@ -174,7 +174,7 @@ static void sco_packet_handler(uint8_t packet_type, uint8_t * packet, uint16_t s
 static void show_usage(void){
     uint8_t iut_address_type;
     bd_addr_t      iut_address;
-    hci_le_advertisement_address(&iut_address_type, iut_address);
+    gap_advertisements_get_address(&iut_address_type, iut_address);
 
     printf("\n--- Bluetooth HSP Headset Test Console %s ---\n", bd_addr_to_str(iut_address));
     printf("---\n");
@@ -238,7 +238,7 @@ static int stdin_process(struct btstack_data_source *ds){
             break;
         case 'b':
             printf("Press user button\n");
-            hsp_hs_press_button();
+            hsp_hs_send_button_press();
             break;
         default:
             show_usage();
@@ -258,18 +258,10 @@ static void packet_handler(uint8_t * event, uint16_t event_size){
             // request loopback mode
             hci_send_cmd(&hci_write_synchronous_flow_control_enable, 1);
             break;
-        case HCI_EVENT_NUMBER_OF_COMPLETED_PACKETS:
-            // printf("HCI_EVENT_NUMBER_OF_COMPLETED_PACKETS\n");
-            // try_send_sco();
-            break;
-        case DAEMON_EVENT_HCI_PACKET_SENT:
-            // printf("DAEMON_EVENT_HCI_PACKET_SENT\n");
-            // try_send_sco();
-            break;
         case HCI_EVENT_SYNCHRONOUS_CONNECTION_COMPLETE:
-            // printf("HCI_EVENT_SYNCHRONOUS_CONNECTION_COMPLETE status %u, %x\n", event[2], READ_BT_16(event, 3));
+            // printf("HCI_EVENT_SYNCHRONOUS_CONNECTION_COMPLETE status %u, %x\n", event[2], little_endian_read_16(event, 3));
             if (event[2]) break;
-            sco_handle = READ_BT_16(event, 3);
+            sco_handle = little_endian_read_16(event, 3);
             break;  
         case HCI_EVENT_HSP_META:
             switch (event[2]) { 
@@ -300,8 +292,8 @@ static void packet_handler(uint8_t * event, uint16_t event_size){
                     break;
                 case HSP_SUBEVENT_AG_INDICATION:
                     memset(hs_cmd_buffer, 0, sizeof(hs_cmd_buffer));
-                    int size = event_size <= sizeof(hs_cmd_buffer)? event_size : sizeof(hs_cmd_buffer); 
-                    memcpy(hs_cmd_buffer, &event[3], size - 1);
+                    int size = event[3] <= sizeof(hs_cmd_buffer)? event[3] : sizeof(hs_cmd_buffer); 
+                    memcpy(hs_cmd_buffer, &event[4], size - 1);
                     printf("Received custom indication: \"%s\". \nExit code or call hsp_hs_send_result.\n", hs_cmd_buffer);
                     break;
                 default:
@@ -329,10 +321,10 @@ int btstack_main(int argc, const char * argv[]){
     
     sdp_init();
     memset((uint8_t *)hsp_service_buffer, 0, sizeof(hsp_service_buffer));
-    hsp_hs_create_service((uint8_t *)hsp_service_buffer, 0x10004, rfcomm_channel_nr, hsp_hs_service_name, 0);
+    hsp_hs_create_sdp_record((uint8_t *)hsp_service_buffer, 0x10004, rfcomm_channel_nr, hsp_hs_service_name, 0);
     sdp_register_service((uint8_t *)hsp_service_buffer);
 
-    hci_discoverable_control(1);
+    gap_discoverable_control(1);
     hci_set_class_of_device(0x200418);
     
     btstack_stdin_setup(stdin_process);

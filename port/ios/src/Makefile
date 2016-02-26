@@ -11,7 +11,7 @@ BTSTACK_ROOT=../../..
 VPATH += $(BTSTACK_ROOT)/src \
 		 $(BTSTACK_ROOT)/src/classic \
 		 $(BTSTACK_ROOT)/platform/posix \
-		 $(BTSTACK_ROOT)/platform/daemon \
+		 $(BTSTACK_ROOT)/platform/daemon/src \
 		 $(BTSTACK_ROOT)/platform/cocoa \
 		 $(BTSTACK_ROOT)/port/ios/SpringBoardAccess
 
@@ -35,6 +35,8 @@ TOOL_NAME = BTdaemon
 BTdaemon_FILES = \
 	$(libBTstack_FILES)  	  \
 	btstack_control_iphone.m  \
+	btstack_device_name_db_cocoa.m  \
+	btstack_link_key_db_cocoa.m  \
 	btstack_memory.c          \
 	btstack_memory_pool.c     \
 	daemon.c  				  \
@@ -43,20 +45,17 @@ BTdaemon_FILES = \
 	l2cap.c                   \
 	l2cap_signaling.c         \
 	platform_iphone.m         \
-	remote_device_db_cocoa.m  \
 	rfcomm.c                  \
-	sdp.c                     \
+	sdp_server.c                     \
 	SpringBoardAccess.c       \
     rfcomm_service_db_cocoa.m \
     sdp_client.c              \
-    sdp_parser.c              \
     sdp_query_rfcomm.c        \
-    sdp_query_util.c          \
 
 BTdaemon_CFLAGS = \
 	-I$(BTSTACK_ROOT)/src \
 	-I$(BTSTACK_ROOT)/platform/posix \
-	-I$(BTSTACK_ROOT)/platform/daemon \
+	-I$(BTSTACK_ROOT)/platform/daemon/src \
 	-I..
 BTdaemon_PRIVATE_FRAMEWORKS = IOKIT
 

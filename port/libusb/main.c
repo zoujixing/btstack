@@ -49,12 +49,12 @@
 
 #include "btstack_config.h"
 
+#include "btstack_debug.h"
+#include "btstack_link_key_db_fs.h"
+#include "btstack_memory.h"
 #include "btstack_run_loop.h"
 #include "btstack_run_loop_posix.h"
 #include "hal_led.h"
-
-#include "btstack_debug.h"
-#include "btstack_memory.h"
 #include "hci.h"
 #include "hci_dump.h"
 #include "stdin_support.h"
@@ -91,9 +91,8 @@ int main(int argc, const char * argv[]){
     hci_dump_open("/tmp/hci_dump.pklg", HCI_DUMP_PACKETLOGGER);
 
     // init HCI
-	const hci_transport_t * transport = hci_transport_usb_instance();
-    remote_device_db_t * remote_db = (remote_device_db_t *) &remote_device_db_fs;
-	hci_init(transport, NULL, remote_db);
+	hci_init(hci_transport_usb_instance(), NULL);
+    hci_set_link_key_db(btstack_link_key_db_fs_instance());
     
     // handle CTRL-c
     signal(SIGINT, sigint_handler);

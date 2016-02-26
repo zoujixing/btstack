@@ -102,14 +102,14 @@ int ad_data_contains_uuid16(uint8_t ad_len, uint8_t * ad_data, uint16_t uuid16){
             case IncompleteList16:
             case CompleteList16:
                 for (i=0; i<data_len; i+=2){
-                    uint16_t uuid = READ_BT_16(data, i);
+                    uint16_t uuid = little_endian_read_16(data, i);
                     if ( uuid == uuid16 ) return 1;
                 }
                 break;
             case IncompleteList128:
             case CompleteList128:
-                sdp_normalize_uuid(ad_uuid128, uuid16);
-                swap128(ad_uuid128, uuid128_bt);
+                uuid_add_bluetooth_prefix(ad_uuid128, uuid16);
+                reverse_128(ad_uuid128, uuid128_bt);
             
                 for (i=0; i<data_len; i+=16){
                     if (memcmp(uuid128_bt, &data[i], 16) == 0) return 1;
@@ -126,7 +126,7 @@ int ad_data_contains_uuid128(uint8_t ad_len, uint8_t * ad_data, uint8_t * uuid12
     ad_context_t context;
     // input in big endian/network order, bluetooth data in little endian
     uint8_t uuid128_le[16];
-    swap128(uuid128, uuid128_le);
+    reverse_128(uuid128, uuid128_le);
     for (ad_iterator_init(&context, ad_len, ad_data) ; ad_iterator_has_more(&context) ; ad_iterator_next(&context)){
         uint8_t data_type = ad_iterator_get_data_type(&context);
         uint8_t data_len  = ad_iterator_get_data_len(&context);
@@ -140,8 +140,8 @@ int ad_data_contains_uuid128(uint8_t ad_len, uint8_t * ad_data, uint8_t * uuid12
             case IncompleteList16:
             case CompleteList16:
                 for (i=0; i<data_len; i+=2){
-                    uint16_t uuid16 = READ_BT_16(data, i);
-                    sdp_normalize_uuid(ad_uuid128, uuid16);
+                    uint16_t uuid16 = little_endian_read_16(data, i);
+                    uuid_add_bluetooth_prefix(ad_uuid128, uuid16);
                     
                     if (memcmp(ad_uuid128, uuid128_le, 16) == 0) return 1;
                 }

@@ -58,7 +58,7 @@
 #include "l2cap.h"
 
 #include "ble/sm.h"
-#include "ble/att.h"
+#include "ble/att_db.h"
 #include "ble/att_server.h"
 #include "gap.h"
 #include "ble/le_device_db.h"
@@ -300,7 +300,7 @@ static void app_run(void){
 // - if buffer == NULL, don't copy data, just return size of value
 // - if buffer != NULL, copy data and return number bytes copied
 // @param offset defines start of attribute value
-static uint16_t att_read_callback(uint16_t con_handle, uint16_t attribute_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size){
+static uint16_t att_read_callback(hci_con_handle_t con_handle, uint16_t attribute_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size){
 
     printf("READ Callback, handle %04x, offset %u, buffer size %u\n", attribute_handle, offset, buffer_size);
     uint16_t  att_value_len;
@@ -314,7 +314,7 @@ static uint16_t att_read_callback(uint16_t con_handle, uint16_t attribute_handle
             return att_value_len; 
         case ATT_CHARACTERISTIC_GAP_APPEARANCE_01_VALUE_HANDLE:
             if (buffer){
-                bt_store_16(buffer, 0, gap_appearance);
+                little_endian_store_16(buffer, 0, gap_appearance);
             }
             return 2;
         case ATT_CHARACTERISTIC_GAP_PERIPHERAL_PRIVACY_FLAG_01_VALUE_HANDLE:
@@ -324,7 +324,7 @@ static uint16_t att_read_callback(uint16_t con_handle, uint16_t attribute_handle
             return 1;
         case ATT_CHARACTERISTIC_GAP_RECONNECTION_ADDRESS_01_VALUE_HANDLE:
             if (buffer) {
-                bt_flip_addr(buffer, gap_reconnection_address);
+                reverse_bd_addr(gap_reconnection_address, buffer);
             }
             return 6;
 
@@ -379,7 +379,7 @@ static uint16_t att_read_callback(uint16_t con_handle, uint16_t attribute_handle
 }
 
 // write requests
-static int att_write_callback(uint16_t con_handle, uint16_t attribute_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size){
+static int att_write_callback(hci_con_handle_t con_handle, uint16_t attribute_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size){
     printf("WRITE Callback, handle %04x, mode %u, offset %u, data: ", attribute_handle, transaction_mode, offset);
     printf_hexdump(buffer, buffer_size);
 
@@ -390,7 +390,7 @@ static int att_write_callback(uint16_t con_handle, uint16_t attribute_handle, ui
             printf("Setting device name to '%s'\n", gap_device_name);
             return 0;
         case ATT_CHARACTERISTIC_GAP_APPEARANCE_01_VALUE_HANDLE:
-            gap_appearance = READ_BT_16(buffer, 0);
+            gap_appearance = little_endian_read_16(buffer, 0);
             printf("Setting appearance to 0x%04x'\n", gap_appearance);
             return 0;
         case ATT_CHARACTERISTIC_GAP_PERIPHERAL_PRIVACY_FLAG_01_VALUE_HANDLE:
@@ -399,7 +399,7 @@ static int att_write_callback(uint16_t con_handle, uint16_t attribute_handle, ui
             update_advertisements();
             return 0;
         case ATT_CHARACTERISTIC_GAP_RECONNECTION_ADDRESS_01_VALUE_HANDLE:
-            bt_flip_addr(gap_reconnection_address, buffer);
+            reverse_bd_addr(buffer, gap_reconnection_address);
             printf("Setting Reconnection Address to %s\n", bd_addr_to_str(gap_reconnection_address));
             return 0;
         default:
@@ -561,10 +561,10 @@ static void app_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *
                     switch (packet[2]) {
                         case HCI_SUBEVENT_LE_CONNECTION_COMPLETE:
                             advertisements_enabled = 0;
-                            handle = READ_BT_16(packet, 4);
+                            handle = little_endian_read_16(packet, 4);
                             printf("Connection handle 0x%04x\n", handle);
                             // request connection parameter update - test parameters
-                            // l2cap_le_request_connection_parameter_update(READ_BT_16(packet, 4), 20, 1000, 100, 100);
+                            // l2cap_le_request_connection_parameter_update(little_endian_read_16(packet, 4), 20, 1000, 100, 100);
                             break;
 
                         default:
@@ -580,37 +580,37 @@ static void app_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *
                     att_write_queue_init();
                     break;
                     
-                case SM_JUST_WORKS_REQUEST:
-                    printf("SM_JUST_WORKS_REQUEST\n");
-                    sm_just_works_confirm(READ_BT_16(packet, 2));
+                case SM_EVENT_JUST_WORKS_REQUEST:
+                    printf("SM_EVENT_JUST_WORKS_REQUEST\n");
+                    sm_just_works_confirm(little_endian_read_16(packet, 2));
                     break;
 
-                case SM_PASSKEY_INPUT_NUMBER:
+                case SM_EVENT_PASSKEY_INPUT_NUMBER:
                     // display number
                     master_addr_type = packet[4];
-                    bt_flip_addr(event_address, &packet[5]);
+                    reverse_bd_addr(&packet[5], event_address);
                     printf("\nGAP Bonding %s (%u): Enter 6 digit passkey: '", bd_addr_to_str(master_address), master_addr_type);
                     fflush(stdout);
                     ui_passkey = 0;
                     ui_digits_for_passkey = 6;
                     break;
 
-                case SM_PASSKEY_DISPLAY_NUMBER:
+                case SM_EVENT_PASSKEY_DISPLAY_NUMBER:
                     // display number
-                    printf("\nGAP Bonding %s (%u): Display Passkey '%06u\n", bd_addr_to_str(master_address), master_addr_type, READ_BT_32(packet, 11));
+                    printf("\nGAP Bonding %s (%u): Display Passkey '%06u\n", bd_addr_to_str(master_address), master_addr_type, little_endian_read_32(packet, 11));
                     break;
 
-                case SM_PASSKEY_DISPLAY_CANCEL: 
+                case SM_EVENT_PASSKEY_DISPLAY_CANCEL: 
                     printf("\nGAP Bonding %s (%u): Display cancel\n", bd_addr_to_str(master_address), master_addr_type);
                     break;
 
-                case SM_AUTHORIZATION_REQUEST:
+                case SM_EVENT_AUTHORIZATION_REQUEST:
                     // auto-authorize connection if requested
-                    sm_authorization_grant(READ_BT_16(packet, 2));
+                    sm_authorization_grant(little_endian_read_16(packet, 2));
                     break;
 
-                case ATT_HANDLE_VALUE_INDICATION_COMPLETE:
-                    printf("ATT_HANDLE_VALUE_INDICATION_COMPLETE status %u\n", packet[2]);
+                case ATT_EVENT_HANDLE_VALUE_INDICATION_COMPLETE:
+                    printf("ATT_EVENT_HANDLE_VALUE_INDICATION_COMPLETE status %u\n", packet[2]);
                     break;
 
                 default:

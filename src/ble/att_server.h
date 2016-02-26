@@ -38,7 +38,7 @@
 #define __ATT_SERVER_H
 
 #include <stdint.h>
-#include "ble/att.h"
+#include "ble/att_db.h"
 
 #if defined __cplusplus
 extern "C" {
@@ -48,13 +48,15 @@ extern "C" {
 /*
  * @brief setup ATT server
  * @param db attribute database created by compile-gatt.ph
- * @param read_callback, see att.h, can be NULL
+ * @param read_callback, see att_db.h, can be NULL
  * @param write_callback, see attl.h, can be NULL
  */
 void att_server_init(uint8_t const * db, att_read_callback_t read_callback, att_write_callback_t write_callback);
 
 /*
- * @brief register packet handler for general HCI Events like connect, diconnect, etc.
+ * @brief register packet handler for ATT server events:
+ *        - ATT_EVENT_MTU_EXCHANGE_COMPLETE 
+ *        - ATT_EVENT_HANDLE_VALUE_INDICATION_COMPLETE
  * @param handler
  */
 void att_server_register_packet_handler(btstack_packet_handler_t handler);
@@ -67,15 +69,21 @@ int  att_server_can_send_packet_now(void);
 
 /*
  * @brief notify client about attribute value change
+ * @param attribute_handle
+ * @param value
+ * @param value_len
  * @return 0 if ok, error otherwise
  */
-int att_server_notify(uint16_t handle, uint8_t *value, uint16_t value_len);
+int att_server_notify(uint16_t attribute_handle, uint8_t *value, uint16_t value_len);
 
 /*
  * @brief indicate value change to client. client is supposed to reply with an indication_response
+ * @param attribute_handle
+ * @param value
+ * @param value_len
  * @return 0 if ok, error otherwise
  */
-int att_server_indicate(uint16_t handle, uint8_t *value, uint16_t value_len);
+int att_server_indicate(uint16_t attribute_handle, uint8_t *value, uint16_t value_len);
 
 /* API_END */
 

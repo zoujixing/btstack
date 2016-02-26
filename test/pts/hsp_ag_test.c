@@ -60,7 +60,7 @@
 
 #include "hci.h"
 #include "l2cap.h"
-#include "classic/sdp.h"
+#include "classic/sdp_server.h"
 #include "btstack_debug.h"
 #include "hsp_ag.h"
 #include "stdin_support.h"
@@ -172,8 +172,8 @@ static void packet_handler(uint8_t * event, uint16_t event_size){
             break;
         case HSP_SUBEVENT_HS_COMMAND:{
             memset(hs_cmd_buffer, 0, sizeof(hs_cmd_buffer));
-            int size = event_size <= sizeof(hs_cmd_buffer)? event_size : sizeof(hs_cmd_buffer); 
-            memcpy(hs_cmd_buffer, &event[3], size - 1);
+            int size = event[3] <= sizeof(hs_cmd_buffer)? event[3] : sizeof(hs_cmd_buffer); 
+            memcpy(hs_cmd_buffer, &event[4], size - 1);
             printf("Received custom command: \"%s\". \nExit code or call hsp_ag_send_result.\n", hs_cmd_buffer);
             break;
         }
@@ -191,7 +191,7 @@ int btstack_main(int argc, const char * argv[]){
     // init SDP, create record for SPP and register with SDP
     sdp_init();
     memset((uint8_t *)hsp_service_buffer, 0, sizeof(hsp_service_buffer));
-    hsp_ag_create_service((uint8_t *)hsp_service_buffer, 0x10003, rfcomm_channel_nr, hsp_ag_service_name);
+    hsp_ag_create_sdp_record((uint8_t *)hsp_service_buffer, 0x10003, rfcomm_channel_nr, hsp_ag_service_name);
     sdp_register_service((uint8_t *)hsp_service_buffer);
 
     // turn on!

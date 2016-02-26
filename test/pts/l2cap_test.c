@@ -67,6 +67,8 @@ static bd_addr_t remote = {0x84, 0x38, 0x35, 0x65, 0xD1, 0x15};
 static uint16_t handle;
 static uint16_t local_cid;
 
+static btstack_packet_callback_registration_t hci_event_callback_registration;
+
 static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
 
     bd_addr_t event_addr;
@@ -84,19 +86,19 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
             break;
         case L2CAP_EVENT_CHANNEL_OPENED:
             // inform about new l2cap connection
-            bt_flip_addr(event_addr, &packet[3]);
-            psm = READ_BT_16(packet, 11); 
-            local_cid = READ_BT_16(packet, 13); 
-            handle = READ_BT_16(packet, 9);
+            reverse_bd_addr(&packet[3], event_addr);
+            psm = little_endian_read_16(packet, 11); 
+            local_cid = little_endian_read_16(packet, 13); 
+            handle = little_endian_read_16(packet, 9);
             if (packet[2] == 0) {
                 printf("Channel successfully opened: %s, handle 0x%02x, psm 0x%02x, local cid 0x%02x, remote cid 0x%02x\n",
-                       bd_addr_to_str(event_addr), handle, psm, local_cid,  READ_BT_16(packet, 15));
+                       bd_addr_to_str(event_addr), handle, psm, local_cid,  little_endian_read_16(packet, 15));
             } else {
                 printf("L2CAP connection to device %s failed. status code %u\n", bd_addr_to_str(event_addr), packet[2]);
             }
             break;
         case L2CAP_EVENT_INCOMING_CONNECTION: {
-            uint16_t l2cap_cid  = READ_BT_16(packet, 12);
+            uint16_t l2cap_cid  = little_endian_read_16(packet, 12);
             printf("L2CAP Accepting incoming connection request\n"); 
             l2cap_accept_connection(l2cap_cid);
             break;
@@ -154,10 +156,13 @@ int btstack_main(int argc, const char * argv[]);
 int btstack_main(int argc, const char * argv[]){
 
     hci_set_class_of_device(0x220404);
-    hci_discoverable_control(1);
+    gap_discoverable_control(1);
+
+    /* Register for HCI events */
+    hci_event_callback_registration.callback = &packet_handler;
+    hci_add_event_handler(&hci_event_callback_registration);
 
     l2cap_init();
-    l2cap_register_packet_handler(&packet_handler);
     l2cap_register_service(packet_handler, PSM_SDP, 100, LEVEL_0);
     
     // turn on!

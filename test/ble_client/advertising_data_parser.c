@@ -88,6 +88,7 @@ static uint8_t adv_multi_packet[] = {
 };
 
 static int adv_index = 0;
+static btstack_packet_callback_registration_t hci_event_callback_registration;
 
 void CHECK_EQUAL_ARRAY(const uint8_t * expected, uint8_t * actual, int size){
     for (int i=0; i<size; i++){
@@ -101,17 +102,18 @@ static int dummy_callback(void){
 }
 
 static hci_transport_t dummy_transport = {
+  /*  .transport.name                          = */  "DUMMY",
+  /*  .transport.init                          = */  NULL,
   /*  .transport.open                          = */  NULL,
   /*  .transport.close                         = */  NULL,
-  /*  .transport.send_packet                   = */  NULL,
   /*  .transport.register_packet_handler       = */  (void (*)(void (*)(uint8_t, uint8_t *, uint16_t))) dummy_callback,
-  /*  .transport.get_transport_name            = */  NULL,
-  /*  .transport.set_baudrate                  = */  NULL,
   /*  .transport.can_send_packet_now           = */  NULL,
+  /*  .transport.send_packet                   = */  NULL,
+  /*  .transport.set_baudrate                  = */  NULL,
 };
 
 
-void packet_handler(uint8_t packet_type, uint8_t *packet, uint16_t size){
+void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
     CHECK_EQUAL(0xE2, packet[2]);                   // event type
     CHECK_EQUAL(0x01, packet[3]);                   // address type
     CHECK_EQUAL_ARRAY(expected_bt_addr, &packet[4], 6);
@@ -147,8 +149,9 @@ bool nameHasPrefix(const char * name_prefix, uint16_t data_length, uint8_t * dat
 
 TEST_GROUP(ADParser){
     void setup(void){
-        hci_init(&dummy_transport, NULL, NULL, NULL);
-        hci_register_packet_handler(packet_handler);
+        hci_init(&dummy_transport, NULL);
+        hci_event_callback_registration.callback = &packet_handler;
+        hci_add_event_handler(&hci_event_callback_registration);
     }
 };
 

@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "ble/att.h"
+#include "ble/att_db.h"
 #include "hci.h"
 #include "hci_dump.h"
 #include "l2cap.h"
@@ -11,7 +11,7 @@
 
 
 static btstack_packet_handler_t le_data_handler;
-static void (*event_packet_handler) (void * connection, uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size) = NULL;
+static btstack_packet_handler_t event_packet_handler;
 
 static uint8_t packet_buffer[256];
 static uint16_t packet_buffer_len = 0;
@@ -59,10 +59,10 @@ void aes128_calc_cyphertext(uint8_t key[16], uint8_t plaintext[16], uint8_t cyph
 void mock_simulate_hci_event(uint8_t * packet, uint16_t size){
 	hci_dump_packet(HCI_EVENT_PACKET, 1, packet, size);
 	if (event_packet_handler){
-		event_packet_handler(NULL, HCI_EVENT_PACKET, NULL, packet, size);
+		event_packet_handler(HCI_EVENT_PACKET, 0, packet, size);
 	}
 	if (le_data_handler){
-		le_data_handler(HCI_EVENT_PACKET, NULL, packet, size);
+		le_data_handler(HCI_EVENT_PACKET, 0, packet, size);
 	}
 }
 
@@ -70,7 +70,7 @@ void aes128_report_result(void){
 	uint8_t le_enc_result[22];
 	uint8_t enc1_data[] = { 0x0e, 0x14, 0x01, 0x17, 0x20, 0x00 };
 	memcpy (le_enc_result, enc1_data, 6);
-	swap128(aes128_cyphertext, &le_enc_result[6]);
+	reverse_128(aes128_cyphertext, &le_enc_result[6]);
 	mock_simulate_hci_event(&le_enc_result[0], sizeof(le_enc_result));
 }
 
@@ -82,13 +82,13 @@ void mock_simulate_sm_data_packet(uint8_t * packet, uint16_t len){
 	uint8_t acl_buffer[len + 8];
 
 	// 0 - Connection handle : PB=10 : BC=00 
-    bt_store_16(acl_buffer, 0, handle | (0 << 12) | (0 << 14));
+    little_endian_store_16(acl_buffer, 0, handle | (0 << 12) | (0 << 14));
     // 2 - ACL length
-    bt_store_16(acl_buffer, 2,  len + 4);
+    little_endian_store_16(acl_buffer, 2,  len + 4);
     // 4 - L2CAP packet length
-    bt_store_16(acl_buffer, 4,  len + 0);
+    little_endian_store_16(acl_buffer, 4,  len + 0);
     // 6 - L2CAP channel DEST
-    bt_store_16(acl_buffer, 6, cid);  
+    little_endian_store_16(acl_buffer, 6, cid);  
 
 	memcpy(&acl_buffer[8], packet, len);
 	hci_dump_packet(HCI_ACL_DATA_PACKET, 1, &acl_buffer[0], len + 8);
@@ -136,7 +136,7 @@ void hci_connections_get_iterator(btstack_linked_list_iterator_t *it){
 }
 
 // get addr type and address used in advertisement packets
-void hci_le_advertisement_address(uint8_t * addr_type, bd_addr_t addr){
+void gap_advertisements_get_address(uint8_t * addr_type, bd_addr_t addr){
     *addr_type = 0;
     uint8_t dummy[] = { 0x00, 0x1b, 0xdc, 0x07, 0x32, 0xef };
     memcpy(addr, dummy, 6);
@@ -151,7 +151,7 @@ int  l2cap_can_send_connectionless_packet_now(void){
 	return packet_buffer_len == 0;
 }
 
-int  l2cap_can_send_fixed_channel_packet_now(uint16_t handle){
+int  l2cap_can_send_fixed_channel_packet_now(uint16_t handle, uint16_t channel_id){
 	return packet_buffer_len == 0;
 }
 
@@ -168,12 +168,12 @@ int hci_send_cmd(const hci_cmd_t *cmd, ...){
 	if (cmd->opcode ==  hci_le_encrypt.opcode){
 	    uint8_t * key_flipped = &packet_buffer[3];
 	    uint8_t key[16];
-		swap128(key_flipped, key);
+		reverse_128(key_flipped, key);
 	    // printf("le_encrypt key ");
 	    // hexdump(key, 16);
 	    uint8_t * plaintext_flipped = &packet_buffer[19];
 	    uint8_t plaintext[16];
- 		swap128(plaintext_flipped, plaintext);
+ 		reverse_128(plaintext_flipped, plaintext);
 	    // printf("le_encrypt txt ");
 	    // hexdump(plaintext, 16);
 	    aes128_calc_cyphertext(key, plaintext, aes128_cyphertext);
@@ -187,9 +187,8 @@ void l2cap_register_fixed_channel(btstack_packet_handler_t packet_handler, uint1
 	le_data_handler = packet_handler;
 }
 
-void l2cap_register_packet_handler(void (*handler)(void * connection, uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size)){
-	printf("l2cap_register_packet_handler\n");
-	event_packet_handler = handler;
+void hci_add_event_handler(btstack_packet_callback_registration_t * callback_handler){
+	event_packet_handler = callback_handler->callback;
 }
 
 int l2cap_reserve_packet_buffer(void){
@@ -208,13 +207,13 @@ int l2cap_send_connectionless(uint16_t handle, uint16_t cid, uint8_t * buffer, u
     int pb = hci_non_flushable_packet_boundary_flag_supported() ? 0x00 : 0x02;
 
 	// 0 - Connection handle : PB=pb : BC=00 
-    bt_store_16(packet_buffer, 0, handle | (pb << 12) | (0 << 14));
+    little_endian_store_16(packet_buffer, 0, handle | (pb << 12) | (0 << 14));
     // 2 - ACL length
-    bt_store_16(packet_buffer, 2,  len + 4);
+    little_endian_store_16(packet_buffer, 2,  len + 4);
     // 4 - L2CAP packet length
-    bt_store_16(packet_buffer, 4,  len + 0);
+    little_endian_store_16(packet_buffer, 4,  len + 0);
     // 6 - L2CAP channel DEST
-    bt_store_16(packet_buffer, 6, cid);  
+    little_endian_store_16(packet_buffer, 6, cid);  
 
 	memcpy(&packet_buffer[8], buffer, len);
 	hci_dump_packet(HCI_ACL_DATA_PACKET, 0, &packet_buffer[0], len + 8);

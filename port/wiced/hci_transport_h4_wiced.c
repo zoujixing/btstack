@@ -114,7 +114,7 @@ static wiced_result_t h4_main_notify_packet_send(void *arg){
     // prepare for next packet
     tx_worker_data_size = 0;
     // notify upper stack that it might be possible to send again
-    uint8_t event[] = { DAEMON_EVENT_HCI_PACKET_SENT, 0};
+    uint8_t event[] = { HCI_EVENT_TRANSPORT_PACKET_SENT, 0};
     packet_handler(HCI_EVENT_PACKET, &event[0], sizeof(event));
     return WICED_SUCCESS;
 }
@@ -140,7 +140,7 @@ static wiced_result_t h4_rx_worker_receive_packet(void * arg){
                 break;
             case HCI_ACL_DATA_PACKET:
                 h4_rx_worker_receive_bytes(HCI_ACL_HEADER_SIZE);
-                h4_rx_worker_receive_bytes(READ_BT_16( hci_packet, 3));
+                h4_rx_worker_receive_bytes(little_endian_read_16( hci_packet, 3));
                 break;
             case HCI_SCO_DATA_PACKET:
                 h4_rx_worker_receive_bytes(HCI_SCO_HEADER_SIZE);

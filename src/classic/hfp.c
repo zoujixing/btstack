@@ -56,9 +56,11 @@
 #include "btstack_memory.h"
 #include "hci_dump.h"
 #include "l2cap.h"
-#include "classic/sdp_query_rfcomm.h"
-#include "classic/sdp.h"
 #include "btstack_debug.h"
+#include "classic/sdp_query_rfcomm.h"
+#include "classic/sdp_server.h"
+#include "classic/sdp_util.h"
+#include "btstack_event.h"
 
 #define HFP_HF_FEATURES_SIZE 10
 #define HFP_AG_FEATURES_SIZE 12
@@ -102,6 +104,11 @@ static hfp_generic_status_indicator_t hfp_generic_status_indicators[HFP_MAX_NUM_
 
 static btstack_linked_list_t hfp_connections = NULL;
 static void parse_sequence(hfp_connection_t * context);
+static hfp_callback_t hfp_callback;
+
+void hfp_set_callback(hfp_callback_t callback){
+    hfp_callback = callback;
+}
 
 hfp_generic_status_indicator_t * get_hfp_generic_status_indicators(void){
     return (hfp_generic_status_indicator_t *) &hfp_generic_status_indicators;
@@ -225,7 +232,7 @@ static void hfp_emit_audio_connection_established_event(hfp_callback_t callback,
     event[1] = sizeof(event) - 2;
     event[2] = HFP_SUBEVENT_AUDIO_CONNECTION_ESTABLISHED;
     event[3] = value; // status 0 == OK
-    bt_store_16(event, 4, sco_handle);
+    little_endian_store_16(event, 4, sco_handle);
     (*callback)(event, sizeof(event));
 }
 
@@ -413,69 +420,56 @@ void hfp_create_sdp_record(uint8_t * service, uint32_t service_record_handle, ui
 }
 
 static hfp_connection_t * connection_doing_sdp_query = NULL;
-static void handle_query_rfcomm_event(sdp_query_event_t * event, void * context){
-    sdp_query_rfcomm_service_event_t * ve;
-    sdp_query_complete_event_t * ce;
+
+static void handle_hci_event(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
+    hfp_handle_hci_event(packet_type, packet, size);
+}
+
+static void handle_query_rfcomm_event(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
     hfp_connection_t * connection = connection_doing_sdp_query;
     
-    if ( connection->state != HFP_W4_SDP_QUERY_COMPLETE) return;
+    if ( connection->state != HFP_W4_SDP_EVENT_QUERY_COMPLETE) return;
     
-    switch (event->type){
-        case SDP_QUERY_RFCOMM_SERVICE:
-            ve = (sdp_query_rfcomm_service_event_t*) event;
+    switch (hci_event_packet_get_type(packet)){
+        case SDP_EVENT_QUERY_RFCOMM_SERVICE:
             if (!connection) {
-                log_error("handle_query_rfcomm_event alloc connection for RFCOMM port %u failed", ve->channel_nr);
+                log_error("handle_query_rfcomm_event alloc connection for RFCOMM port %u failed", sdp_event_query_rfcomm_service_get_rfcomm_channel(packet));
                 return;
             }
-            connection->rfcomm_channel_nr = ve->channel_nr;
+            connection->rfcomm_channel_nr = sdp_event_query_rfcomm_service_get_rfcomm_channel(packet);
             break;
-        case SDP_QUERY_COMPLETE:
+        case SDP_EVENT_QUERY_COMPLETE:
             connection_doing_sdp_query = NULL;
-            ce = (sdp_query_complete_event_t*) event;
-            
             if (connection->rfcomm_channel_nr > 0){
                 connection->state = HFP_W4_RFCOMM_CONNECTED;
-                log_info("HFP: SDP_QUERY_COMPLETE context %p, addr %s, state %d", connection, bd_addr_to_str( connection->remote_addr),  connection->state);
-                rfcomm_create_channel(connection->remote_addr, connection->rfcomm_channel_nr, NULL); 
+                log_info("HFP: SDP_EVENT_QUERY_COMPLETE context %p, addr %s, state %d", connection, bd_addr_to_str( connection->remote_addr),  connection->state);
+                rfcomm_create_channel(handle_hci_event, connection->remote_addr, connection->rfcomm_channel_nr, NULL); 
                 break;
             }
-            log_info("rfcomm service not found, status %u.", ce->status);
+            log_info("rfcomm service not found, status %u.", sdp_event_query_complete_get_status(packet));
             break;
         default:
             break;
     }
 }
 
-void hfp_handle_hci_event(hfp_callback_t callback, uint8_t packet_type, uint8_t *packet, uint16_t size){
+void hfp_handle_hci_event(uint8_t packet_type, uint8_t *packet, uint16_t size){
     bd_addr_t event_addr;
     uint16_t rfcomm_cid, handle;
     hfp_connection_t * context = NULL;
 
-    // printf("AG packet_handler type %u, packet[0] %x, size %u\n", packet_type, packet[0], size);
+    // printf("AG packet_handler type %u, event type %x, size %u\n", packet_type, hci_event_packet_get_type(packet), size);
 
-    switch (packet[0]) {
-        case BTSTACK_EVENT_STATE:
-            // bt stack activated, get started 
-            if (packet[2] == HCI_STATE_WORKING){
-                printf("BTstack activated, get started .\n");
-            }
-            break;
-
-        case HCI_EVENT_PIN_CODE_REQUEST:
-            // inform about pin code request
-            printf("Pin code request - using '0000'\n\r");
-            bt_flip_addr(event_addr, &packet[2]);
-            hci_send_cmd(&hci_pin_code_request_reply, &event_addr, 4, "0000");
-            break;
+    switch (hci_event_packet_get_type(packet)) {
         
         case RFCOMM_EVENT_INCOMING_CONNECTION:
             // data: event (8), len(8), address(48), channel (8), rfcomm_cid (16)
-            bt_flip_addr(event_addr, &packet[2]); 
+            reverse_bd_addr(&packet[2], event_addr); 
             context = provide_hfp_connection_context_for_bd_addr(event_addr);
             
             if (!context || context->state != HFP_IDLE) return;
 
-            context->rfcomm_cid = READ_BT_16(packet, 9);
+            context->rfcomm_cid = little_endian_read_16(packet, 9);
             context->state = HFP_W4_RFCOMM_CONNECTED;
             printf("RFCOMM channel %u requested for %s\n", context->rfcomm_cid, bd_addr_to_str(context->remote_addr));
             rfcomm_accept_connection(context->rfcomm_cid);
@@ -483,21 +477,21 @@ void hfp_handle_hci_event(hfp_callback_t callback, uint8_t packet_type, uint8_t 
 
         case RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE:
             // data: event(8), len(8), status (8), address (48), handle(16), server channel(8), rfcomm_cid(16), max frame size(16)
-            printf("RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE packet_handler type %u, packet[0] %x, size %u\n", packet_type, packet[0], size);
+            printf("RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE packet_handler type %u, size %u\n", packet_type, size);
 
-            bt_flip_addr(event_addr, &packet[3]); 
+            reverse_bd_addr(&packet[3], event_addr); 
             context = get_hfp_connection_context_for_bd_addr(event_addr);
             if (!context || context->state != HFP_W4_RFCOMM_CONNECTED) return;
             
             if (packet[2]) {
-                hfp_emit_event(callback, HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_ESTABLISHED, packet[2]);
+                hfp_emit_event(hfp_callback, HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_ESTABLISHED, packet[2]);
                 remove_hfp_connection_context(context);
             } else {
-                context->con_handle = READ_BT_16(packet, 9);
-                printf("RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE con_handle 0x%02x\n", context->con_handle);
+                context->acl_handle = little_endian_read_16(packet, 9);
+                printf("RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE con_handle 0x%02x\n", context->acl_handle);
             
-                context->rfcomm_cid = READ_BT_16(packet, 12);
-                uint16_t mtu = READ_BT_16(packet, 14);
+                context->rfcomm_cid = little_endian_read_16(packet, 12);
+                uint16_t mtu = little_endian_read_16(packet, 14);
                 printf("RFCOMM channel open succeeded. Context %p, RFCOMM Channel ID 0x%02x, max frame size %u\n", context, context->rfcomm_cid, mtu);
                         
                 switch (context->state){
@@ -511,14 +505,12 @@ void hfp_handle_hci_event(hfp_callback_t callback, uint8_t packet_type, uint8_t 
                     default:
                         break;
                 }
-                // forward event to app, to learn about con_handle
-                (*callback)(packet, size);
             }
             break;
         
         case HCI_EVENT_SYNCHRONOUS_CONNECTION_COMPLETE:{
 
-            bt_flip_addr(event_addr, &packet[5]);
+            reverse_bd_addr(&packet[5], event_addr);
             int index = 2;
             uint8_t status = packet[index++];
 
@@ -552,18 +544,18 @@ void hfp_handle_hci_event(hfp_callback_t callback, uint8_t packet_type, uint8_t 
                 break;
             }
             
-            uint16_t sco_handle = READ_BT_16(packet, index);
+            uint16_t sco_handle = little_endian_read_16(packet, index);
             index+=2;
 
-            bt_flip_addr(event_addr, &packet[index]);
+            reverse_bd_addr(&packet[index], event_addr);
             index+=6;
 
             uint8_t link_type = packet[index++];
             uint8_t transmission_interval = packet[index++];  // measured in slots
             uint8_t retransmission_interval = packet[index++];// measured in slots
-            uint16_t rx_packet_length = READ_BT_16(packet, index); // measured in bytes
+            uint16_t rx_packet_length = little_endian_read_16(packet, index); // measured in bytes
             index+=2;
-            uint16_t tx_packet_length = READ_BT_16(packet, index); // measured in bytes
+            uint16_t tx_packet_length = little_endian_read_16(packet, index); // measured in bytes
             index+=2;
             uint8_t air_mode = packet[index];
 
@@ -601,12 +593,12 @@ void hfp_handle_hci_event(hfp_callback_t callback, uint8_t packet_type, uint8_t 
             context->sco_handle = sco_handle;
             context->establish_audio_connection = 0;
             context->state = HFP_AUDIO_CONNECTION_ESTABLISHED;
-            hfp_emit_audio_connection_established_event(callback, packet[2], sco_handle);
+            hfp_emit_audio_connection_established_event(hfp_callback, packet[2], sco_handle);
             break;                
         }
 
         case RFCOMM_EVENT_CHANNEL_CLOSED:
-            rfcomm_cid = READ_BT_16(packet,2);
+            rfcomm_cid = little_endian_read_16(packet,2);
             context = get_hfp_connection_context_for_rfcomm_cid(rfcomm_cid);
             if (!context) break;
             if (context->state == HFP_W4_RFCOMM_DISCONNECTED_AND_RESTART){
@@ -615,12 +607,12 @@ void hfp_handle_hci_event(hfp_callback_t callback, uint8_t packet_type, uint8_t 
                 break;
             }
             
-            hfp_emit_event(callback, HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_RELEASED, 0);
+            hfp_emit_event(hfp_callback, HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_RELEASED, 0);
             remove_hfp_connection_context(context);
             break;
 
         case HCI_EVENT_DISCONNECTION_COMPLETE:
-            handle = READ_BT_16(packet,3);
+            handle = little_endian_read_16(packet,3);
             context = get_hfp_connection_context_for_sco_handle(handle);
             
             if (!context) break;
@@ -635,18 +627,12 @@ void hfp_handle_hci_event(hfp_callback_t callback, uint8_t packet_type, uint8_t 
                 context->sco_handle = 0;
                 context->release_audio_connection = 0;
                 context->state = HFP_SERVICE_LEVEL_CONNECTION_ESTABLISHED;
-                hfp_emit_event(callback, HFP_SUBEVENT_AUDIO_CONNECTION_RELEASED, 0);
+                hfp_emit_event(hfp_callback, HFP_SUBEVENT_AUDIO_CONNECTION_RELEASED, 0);
                 break;
             }
             break;
 
-        case HCI_EVENT_INQUIRY_RESULT:
-        case HCI_EVENT_INQUIRY_RESULT_WITH_RSSI:
-        case HCI_EVENT_INQUIRY_COMPLETE:
-        case BTSTACK_EVENT_REMOTE_NAME_CACHED:
-        case HCI_EVENT_REMOTE_NAME_REQUEST_COMPLETE:
-            // forward inquiry events to app - TODO: replace with new event handler architecture
-            (*callback)(packet, size);
+        default:
             break;
     }
 }
@@ -1275,11 +1261,6 @@ static void parse_sequence(hfp_connection_t * context){
     }  
 }
 
-void hfp_init(uint16_t rfcomm_channel_nr){
-    rfcomm_register_service(rfcomm_channel_nr, 0xffff);  
-    sdp_query_rfcomm_register_callback(handle_query_rfcomm_event, NULL);
-}
-
 void hfp_establish_service_level_connection(bd_addr_t bd_addr, uint16_t service_uuid){
     hfp_connection_t * context = provide_hfp_connection_context_for_bd_addr(bd_addr);
     log_info("hfp_connect %s, context %p", bd_addr_to_str(bd_addr), context);
@@ -1298,10 +1279,10 @@ void hfp_establish_service_level_connection(bd_addr_t bd_addr, uint16_t service_
             return;
         case HFP_IDLE:
             memcpy(context->remote_addr, bd_addr, 6);
-            context->state = HFP_W4_SDP_QUERY_COMPLETE;
+            context->state = HFP_W4_SDP_EVENT_QUERY_COMPLETE;
             connection_doing_sdp_query = context;
             context->service_uuid = service_uuid;
-            sdp_query_rfcomm_channel_and_name_for_uuid(context->remote_addr, service_uuid);
+            sdp_query_rfcomm_channel_and_name_for_uuid(&handle_query_rfcomm_event, context->remote_addr, service_uuid);
             break;
         default:
             break;

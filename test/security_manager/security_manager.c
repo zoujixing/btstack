@@ -108,6 +108,8 @@ uint8_t test_acl_packet_22[] = {
 
 bd_addr_t test_device_addr = {0x34, 0xb1, 0xf7, 0xd1, 0x77, 0x9b};
 
+static btstack_packet_callback_registration_t sm_event_callback_registration;
+
 void mock_init(void);
 void mock_simulate_hci_state_working(void);
 void mock_simulate_hci_event(uint8_t * packet, uint16_t size);
@@ -126,29 +128,29 @@ void app_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet,
     switch (packet_type) {
         case HCI_EVENT_PACKET:
             switch (packet[0]) {
-                case SM_PASSKEY_INPUT_NUMBER: 
+                case SM_EVENT_PASSKEY_INPUT_NUMBER: 
                     // store peer address for input
                     printf("\nGAP Bonding: Enter 6 digit passkey: '");
                     fflush(stdout);
                     break;
 
-                case SM_PASSKEY_DISPLAY_NUMBER:
-                    printf("\nGAP Bonding: Display Passkey '%06u\n", READ_BT_32(packet, 11));
+                case SM_EVENT_PASSKEY_DISPLAY_NUMBER:
+                    printf("\nGAP Bonding: Display Passkey '%06u\n", little_endian_read_32(packet, 11));
                     break;
 
-                case SM_PASSKEY_DISPLAY_CANCEL: 
+                case SM_EVENT_PASSKEY_DISPLAY_CANCEL: 
                     printf("\nGAP Bonding: Display cancel\n");
                     break;
 
-                case SM_JUST_WORKS_REQUEST:
+                case SM_EVENT_JUST_WORKS_REQUEST:
                     // auto-authorize connection if requested
-                    sm_just_works_confirm(READ_BT_16(packet, 2));
+                    sm_just_works_confirm(little_endian_read_16(packet, 2));
                     printf("Just Works request confirmed\n");
                     break;
 
-                case SM_AUTHORIZATION_REQUEST:
+                case SM_EVENT_AUTHORIZATION_REQUEST:
                     // auto-authorize connection if requested
-                    sm_authorization_grant(READ_BT_16(packet, 2));
+                    sm_authorization_grant(little_endian_read_16(packet, 2));
                     break;
 
                 default:
@@ -156,7 +158,6 @@ void app_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet,
             }
     }
 }
-
 
 void CHECK_EQUAL_ARRAY(uint8_t * expected, uint8_t * actual, int size){
 	int i;
@@ -181,8 +182,8 @@ TEST_GROUP(SecurityManager){
 	    sm_init();
 	    sm_set_io_capabilities(IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
 	    sm_set_authentication_requirements( SM_AUTHREQ_BONDING ); 
-        sm_register_packet_handler(app_packet_handler);
-	}
+        sm_event_callback_registration.callback = &app_packet_handler;
+        sm_add_event_handler(&sm_event_callback_registration);	}
 };
 
 TEST(SecurityManager, MainTest){

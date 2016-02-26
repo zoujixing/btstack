@@ -12,7 +12,7 @@ GLOBAL_INCLUDES += . ../../src ../../platform/embedded ../../chipset/bcm ../../.
 
 # core BTstack sources
 $(NAME)_SOURCES += \
-	../../src/ble/att.c          		  \
+	../../src/ble/att_db.c          		  \
 	../../src/ble/att_dispatch.c 		  \
 	../../src/ble/att_server.c   		  \
 	../../src/ble/le_device_db_memory.c   \
@@ -20,11 +20,9 @@ $(NAME)_SOURCES += \
 	../../src/classic/hsp_hs.c            \
 	../../src/classic/remote_device_db_memory.c \
 	../../src/classic/rfcomm.c            \
-	../../src/classic/sdp.c               \
+	../../src/classic/sdp_server.c               \
 	../../src/classic/sdp_client.c        \
-	../../src/classic/sdp_parser.c        \
 	../../src/classic/sdp_query_rfcomm.c  \
-	../../src/classic/sdp_query_util.c    \
 	../../src/classic/sdp_util.c          \
 	../../src/btstack_linked_list.c       \
 	../../src/btstack_memory.c            \

@@ -244,19 +244,23 @@ static void h4_block_received(void){
                 case EHCILL_WAKE_UP_IND:
                 case EHCILL_WAKE_UP_ACK:
                     ehcill_handle(hci_packet[0]);
-                    read_pos = 0;
-                    bytes_to_read = 1;
-                    break;
+                    h4_rx_init_sm();
+                    return;
                 default:
                     log_error("h4_process: invalid packet type 0x%02x", hci_packet[0]);
-                    read_pos = 0;
-                    bytes_to_read = 1;
-                    break;
+                    h4_rx_init_sm();
+                    return;
             }
             break;
             
         case H4_W4_EVENT_HEADER:
             bytes_to_read = hci_packet[2];
+            // check ACL length
+            if (HCI_ACL_HEADER_SIZE + bytes_to_read >  HCI_PACKET_BUFFER_SIZE){
+                log_error("h4_process: invalid ACL payload len %u - only space for %u", bytes_to_read, HCI_PACKET_BUFFER_SIZE - HCI_ACL_HEADER_SIZE);
+                h4_rx_init_sm();
+                return;              
+            }
             if (bytes_to_read) {
                 h4_state = H4_W4_PAYLOAD;
                 break;
@@ -265,7 +269,7 @@ static void h4_block_received(void){
             break;
             
         case H4_W4_ACL_HEADER:
-            bytes_to_read = READ_BT_16( hci_packet, 3);
+            bytes_to_read = little_endian_read_16( hci_packet, 3);
             if (bytes_to_read) {
                 h4_state = H4_W4_PAYLOAD;
                 break;
@@ -403,7 +407,7 @@ static int h4_process(struct btstack_data_source *ds) {
 		}
 		
         tx_send_packet_sent = 0;
-        uint8_t event[] = { DAEMON_EVENT_HCI_PACKET_SENT, 0 };
+        uint8_t event[] = { HCI_EVENT_TRANSPORT_PACKET_SENT, 0 };
         packet_handler(HCI_EVENT_PACKET, &event[0], sizeof(event));
     }
 

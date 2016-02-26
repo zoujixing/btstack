@@ -46,16 +46,15 @@
 #include <string.h> // memcpy
 #include <stdint.h>
 
-#include "hci_cmd.h"
+#include "bnep.h"
+#include "btstack_debug.h"
+#include "btstack_event.h"
+#include "btstack_memory.h"
 #include "btstack_util.h"
 #include "classic/sdp_util.h"
-
-#include "btstack_memory.h"
 #include "hci.h"
+#include "hci_cmd.h"
 #include "hci_dump.h"
-#include "btstack_debug.h"
-#include "bnep.h"
-
 #include "l2cap.h"
 
 #define BNEP_CONNECTION_TIMEOUT_MS 10000
@@ -82,10 +81,10 @@ static void bnep_emit_open_channel_complete(bnep_channel_t *channel, uint8_t sta
     event[0] = BNEP_EVENT_OPEN_CHANNEL_COMPLETE;
     event[1] = sizeof(event) - 2;
     event[2] = status;
-    bt_store_16(event, 3, channel->uuid_source);
-    bt_store_16(event, 5, channel->uuid_dest);
-    bt_store_16(event, 7, channel->max_frame_size);
-    BD_ADDR_COPY(&event[9], channel->remote_addr);
+    little_endian_store_16(event, 3, channel->uuid_source);
+    little_endian_store_16(event, 5, channel->uuid_dest);
+    little_endian_store_16(event, 7, channel->max_frame_size);
+    bd_addr_copy(&event[9], channel->remote_addr);
     hci_dump_packet( HCI_EVENT_PACKET, 0, event, sizeof(event));
 	(*app_packet_handler)(HCI_EVENT_PACKET, channel->l2cap_cid, (uint8_t *) event, sizeof(event));
 }
@@ -96,9 +95,9 @@ static void bnep_emit_channel_timeout(bnep_channel_t *channel)
     uint8_t event[2 + sizeof(bd_addr_t) + 2 * sizeof(uint16_t) + sizeof(uint8_t)];
     event[0] = BNEP_EVENT_CHANNEL_TIMEOUT;
     event[1] = sizeof(event) - 2;
-    bt_store_16(event, 2, channel->uuid_source);
-    bt_store_16(event, 4, channel->uuid_dest);
-    BD_ADDR_COPY(&event[6], channel->remote_addr);
+    little_endian_store_16(event, 2, channel->uuid_source);
+    little_endian_store_16(event, 4, channel->uuid_dest);
+    bd_addr_copy(&event[6], channel->remote_addr);
     event[12] = channel->state; 
     hci_dump_packet( HCI_EVENT_PACKET, 0, event, sizeof(event));
 	(*app_packet_handler)(HCI_EVENT_PACKET, channel->l2cap_cid, (uint8_t *) event, sizeof(event));
@@ -110,9 +109,9 @@ static void bnep_emit_channel_closed(bnep_channel_t *channel)
     uint8_t event[2 + sizeof(bd_addr_t) + 2 * sizeof(uint16_t)];
     event[0] = BNEP_EVENT_CHANNEL_CLOSED;
     event[1] = sizeof(event) - 2;
-    bt_store_16(event, 2, channel->uuid_source);
-    bt_store_16(event, 4, channel->uuid_dest);
-    BD_ADDR_COPY(&event[6], channel->remote_addr);
+    little_endian_store_16(event, 2, channel->uuid_source);
+    little_endian_store_16(event, 4, channel->uuid_dest);
+    bd_addr_copy(&event[6], channel->remote_addr);
     hci_dump_packet( HCI_EVENT_PACKET, 0, event, sizeof(event));
 	(*app_packet_handler)(HCI_EVENT_PACKET, channel->l2cap_cid, (uint8_t *) event, sizeof(event));
 }
@@ -178,10 +177,10 @@ static int bnep_send_connection_request(bnep_channel_t *channel, uint16_t uuid_s
     bnep_out_buffer[pos++] = 2;
 
     /* Add dest and source UUID */
-    net_store_16(bnep_out_buffer, pos, uuid_dest);
+    big_endian_store_16(bnep_out_buffer, pos, uuid_dest);
     pos += 2;
 
-    net_store_16(bnep_out_buffer, pos, uuid_source);
+    big_endian_store_16(bnep_out_buffer, pos, uuid_source);
     pos += 2;
 
     err = l2cap_send_prepared(channel->l2cap_cid, pos);
@@ -211,7 +210,7 @@ static int bnep_send_connection_response(bnep_channel_t *channel, uint16_t respo
 	bnep_out_buffer[pos++] = BNEP_CONTROL_TYPE_SETUP_CONNECTION_RESPONSE;
 
     /* Add response code */
-    net_store_16(bnep_out_buffer, pos, response_code);
+    big_endian_store_16(bnep_out_buffer, pos, response_code);
     pos += 2;
 
     err = l2cap_send_prepared(channel->l2cap_cid, pos);
@@ -241,13 +240,13 @@ static int bnep_send_filter_net_type_set(bnep_channel_t *channel, bnep_net_filte
 	bnep_out_buffer[pos++] = BNEP_PKT_TYPE_CONTROL;
 	bnep_out_buffer[pos++] = BNEP_CONTROL_TYPE_FILTER_NET_TYPE_SET;
 
-    net_store_16(bnep_out_buffer, pos, len * 2 * 2);
+    big_endian_store_16(bnep_out_buffer, pos, len * 2 * 2);
     pos += 2;
 
     for (i = 0; i < len; i ++) {
-        net_store_16(bnep_out_buffer, pos, filter[i].range_start);
+        big_endian_store_16(bnep_out_buffer, pos, filter[i].range_start);
         pos += 2;
-        net_store_16(bnep_out_buffer, pos, filter[i].range_end);
+        big_endian_store_16(bnep_out_buffer, pos, filter[i].range_end);
         pos += 2;
     }
 
@@ -278,7 +277,7 @@ static int bnep_send_filter_net_type_response(bnep_channel_t *channel, uint16_t 
 	bnep_out_buffer[pos++] = BNEP_CONTROL_TYPE_FILTER_NET_TYPE_RESPONSE;
 
     /* Add response code */
-    net_store_16(bnep_out_buffer, pos, response_code);
+    big_endian_store_16(bnep_out_buffer, pos, response_code);
     pos += 2;
 
     err = l2cap_send_prepared(channel->l2cap_cid, pos);
@@ -309,13 +308,13 @@ static int bnep_send_filter_multi_addr_set(bnep_channel_t *channel, bnep_multi_f
 	bnep_out_buffer[pos++] = BNEP_PKT_TYPE_CONTROL;
 	bnep_out_buffer[pos++] = BNEP_CONTROL_TYPE_FILTER_MULTI_ADDR_SET;
 
-    net_store_16(bnep_out_buffer, pos, len * 2 * ETHER_ADDR_LEN);
+    big_endian_store_16(bnep_out_buffer, pos, len * 2 * ETHER_ADDR_LEN);
     pos += 2;
 
     for (i = 0; i < len; i ++) {
-        BD_ADDR_COPY(bnep_out_buffer + pos, filter[i].addr_start);
+        bd_addr_copy(bnep_out_buffer + pos, filter[i].addr_start);
         pos += ETHER_ADDR_LEN;
-        BD_ADDR_COPY(bnep_out_buffer + pos, filter[i].addr_end);
+        bd_addr_copy(bnep_out_buffer + pos, filter[i].addr_end);
         pos += ETHER_ADDR_LEN;
     }
 
@@ -346,7 +345,7 @@ static int bnep_send_filter_multi_addr_response(bnep_channel_t *channel, uint16_
 	bnep_out_buffer[pos++] = BNEP_CONTROL_TYPE_FILTER_MULTI_ADDR_RESPONSE;
 
     /* Add response code */
-    net_store_16(bnep_out_buffer, pos, response_code);
+    big_endian_store_16(bnep_out_buffer, pos, response_code);
     pos += 2;
 
     err = l2cap_send_prepared(channel->l2cap_cid, pos);
@@ -448,11 +447,11 @@ int bnep_send(uint16_t bnep_cid, uint8_t *packet, uint16_t len)
 
     /* Extract destination and source address from the ethernet packet */
     pos = 0;
-    BD_ADDR_COPY(addr_dest, &packet[pos]);
+    bd_addr_copy(addr_dest, &packet[pos]);
     pos += sizeof(bd_addr_t);
-    BD_ADDR_COPY(addr_source, &packet[pos]);
+    bd_addr_copy(addr_source, &packet[pos]);
     pos += sizeof(bd_addr_t);
-    network_protocol_type = READ_NET_16(packet, pos);
+    network_protocol_type = big_endian_read_16(packet, pos);
     pos += sizeof(uint16_t);
 
     payload_len = len - pos;
@@ -463,7 +462,7 @@ int bnep_send(uint16_t bnep_cid, uint8_t *packet, uint16_t len)
 			return 0;
         }
         /* The "real" network protocol type is 4 bytes ahead in a VLAN packet */
-		network_protocol_type = READ_NET_16(packet, pos + 2);
+		network_protocol_type = big_endian_read_16(packet, pos + 2);
 	}
 
     /* Check network protocol and multicast filters before sending */
@@ -515,18 +514,18 @@ int bnep_send(uint16_t bnep_cid, uint8_t *packet, uint16_t len)
 
     /* Add the destination address if needed */
     if (has_dest) {
-        BD_ADDR_COPY(bnep_out_buffer + pos_out, addr_dest);
+        bd_addr_copy(bnep_out_buffer + pos_out, addr_dest);
         pos_out += sizeof(bd_addr_t);
     }
 
     /* Add the source address if needed */
     if (has_source) {
-        BD_ADDR_COPY(bnep_out_buffer + pos_out, addr_source);
+        bd_addr_copy(bnep_out_buffer + pos_out, addr_source);
         pos_out += sizeof(bd_addr_t);
     }
 
     /* Add protocol type */
-    net_store_16(bnep_out_buffer, pos_out, network_protocol_type);
+    big_endian_store_16(bnep_out_buffer, pos_out, network_protocol_type);
     pos_out += 2;
     
     /* TODO: Add extension headers, if we may support them at a later stage */
@@ -612,7 +611,7 @@ int bnep_set_multicast_filter(uint16_t bnep_cid,  bnep_multi_filter_t *filter, u
 /* BNEP timeout timer helper function */
 static void bnep_channel_timer_handler(btstack_timer_source_t *timer)
 {
-    bnep_channel_t *channel = (bnep_channel_t *)btstack_linked_item_get_user((btstack_linked_item_t *) timer);
+    bnep_channel_t *channel = btstack_run_loop_get_timer_context(timer);
     // retry send setup connection at least one time
     if (channel->state == BNEP_CHANNEL_STATE_WAIT_FOR_CONNECTION_RESPONSE){
         if (channel->retry_count < BNEP_CONNECTION_MAX_RETRIES){
@@ -645,8 +644,8 @@ static void bnep_channel_start_timer(bnep_channel_t *channel, int timeout)
 
     /* Start bnep channel timeout check timer */
     btstack_run_loop_set_timer(&channel->timer, timeout);
-    channel->timer.process = bnep_channel_timer_handler;
-    btstack_linked_item_set_user((btstack_linked_item_t*) &channel->timer, channel);
+    btstack_run_loop_set_timer_handler(&channel->timer, bnep_channel_timer_handler);
+    btstack_run_loop_set_timer_context(&channel->timer, channel);
     btstack_run_loop_add_timer(&channel->timer);
     channel->timer_active = 1;    
 }
@@ -684,8 +683,8 @@ static bnep_channel_t * bnep_channel_create_for_addr(bd_addr_t addr)
 
     channel->state = BNEP_CHANNEL_STATE_CLOSED;
     channel->max_frame_size = bnep_max_frame_size_for_l2cap_mtu(l2cap_max_mtu());
-    BD_ADDR_COPY(&channel->remote_addr, addr);
-    hci_local_bd_addr(channel->local_addr);
+    bd_addr_copy(channel->remote_addr, addr);
+    gap_local_bd_addr(channel->local_addr);
 
     channel->net_filter_count = 0;
     channel->multicast_filter_count = 0;
@@ -702,7 +701,7 @@ static bnep_channel_t* bnep_channel_for_addr(bd_addr_t addr)
     btstack_linked_item_t *it;
     for (it = (btstack_linked_item_t *) bnep_channels; it ; it = it->next){
         bnep_channel_t *channel = ((bnep_channel_t *) it);
-        if (BD_ADDR_CMP(addr, channel->remote_addr) == 0) {
+        if (bd_addr_cmp(addr, channel->remote_addr) == 0) {
             return channel;
         }
     }
@@ -795,8 +794,8 @@ static int bnep_handle_connection_request(bnep_channel_t *channel, uint8_t *pack
 
     /* Check source and destination UUIDs for valid combinations */
     if (response_code == BNEP_RESP_SETUP_SUCCESS) {
-        channel->uuid_dest = READ_NET_16(packet, 2 + uuid_offset);
-        channel->uuid_source = READ_NET_16(packet, 2 + uuid_offset + uuid_size);
+        channel->uuid_dest = big_endian_read_16(packet, 2 + uuid_offset);
+        channel->uuid_source = big_endian_read_16(packet, 2 + uuid_offset + uuid_size);
 
         if ((channel->uuid_dest != SDP_PANU) && 
             (channel->uuid_dest != SDP_NAP) &&
@@ -844,7 +843,7 @@ static int bnep_handle_connection_response(bnep_channel_t *channel, uint8_t *pac
         return 1 + 2;
     }
 
-    response_code = READ_NET_16(packet, 1);
+    response_code = big_endian_read_16(packet, 1);
 
     if (response_code == BNEP_RESP_SETUP_SUCCESS) {
         log_info("BNEP_CONNECTION_RESPONSE: Channel established to %s", bd_addr_to_str(channel->remote_addr));
@@ -880,7 +879,7 @@ static int bnep_handle_filter_net_type_set(bnep_channel_t *channel, uint8_t *pac
         return 0;
     }
     
-    list_length = READ_NET_16(packet, 1);
+    list_length = big_endian_read_16(packet, 1);
     /* Sanity check packet size again with known package size */
     if (size < 3 + list_length) {
         return 0;
@@ -901,8 +900,8 @@ static int bnep_handle_filter_net_type_set(bnep_channel_t *channel, uint8_t *pac
         /* There is still enough space, copy the filters to our filter list */
         /* There is still enough space, copy the filters to our filter list */
         for (i = 0; i < list_length / (2 * 2); i ++) {
-            channel->net_filter[channel->net_filter_count].range_start = READ_NET_16(packet, 1 + 2 + i * 4);
-            channel->net_filter[channel->net_filter_count].range_end = READ_NET_16(packet, 1 + 2 + i * 4 + 2);
+            channel->net_filter[channel->net_filter_count].range_start = big_endian_read_16(packet, 1 + 2 + i * 4);
+            channel->net_filter[channel->net_filter_count].range_end = big_endian_read_16(packet, 1 + 2 + i * 4 + 2);
             if (channel->net_filter[channel->net_filter_count].range_start > channel->net_filter[channel->net_filter_count].range_end) {
                 /* Invalid filter range, ignore this filter rule */
                 log_error("BNEP_FILTER_NET_TYPE_SET: Invalid filter: start: %d, end: %d", 
@@ -942,7 +941,7 @@ static int bnep_handle_filter_net_type_response(bnep_channel_t *channel, uint8_t
         return 1 + 2;
     }
 
-    response_code = READ_NET_16(packet, 1);
+    response_code = big_endian_read_16(packet, 1);
 
     if (response_code == BNEP_RESP_FILTER_SUCCESS) {
         log_info("BNEP_FILTER_NET_TYPE_RESPONSE: Net filter set successfully for %s", bd_addr_to_str(channel->remote_addr));
@@ -963,7 +962,7 @@ static int bnep_handle_multi_addr_set(bnep_channel_t *channel, uint8_t *packet, 
         return 0;
     }
     
-    list_length = READ_NET_16(packet, 1);
+    list_length = big_endian_read_16(packet, 1);
     /* Sanity check packet size again with known package size */
     if (size < 3 + list_length) {
         return 0;
@@ -983,8 +982,8 @@ static int bnep_handle_multi_addr_set(bnep_channel_t *channel, uint8_t *packet, 
         channel->multicast_filter_count = 0;
         /* There is enough space, copy the filters to our filter list */
         for (i = 0; i < list_length / (2 * ETHER_ADDR_LEN); i ++) {
-            BD_ADDR_COPY(channel->multicast_filter[channel->multicast_filter_count].addr_start, packet + 1 + 2 + i * ETHER_ADDR_LEN * 2);
-            BD_ADDR_COPY(channel->multicast_filter[channel->multicast_filter_count].addr_end, packet + 1 + 2 + i * ETHER_ADDR_LEN * 2 + ETHER_ADDR_LEN);
+            bd_addr_copy(channel->multicast_filter[channel->multicast_filter_count].addr_start, packet + 1 + 2 + i * ETHER_ADDR_LEN * 2);
+            bd_addr_copy(channel->multicast_filter[channel->multicast_filter_count].addr_end, packet + 1 + 2 + i * ETHER_ADDR_LEN * 2 + ETHER_ADDR_LEN);
 
             if (memcmp(channel->multicast_filter[channel->multicast_filter_count].addr_start, 
                        channel->multicast_filter[channel->multicast_filter_count].addr_end, ETHER_ADDR_LEN) > 0) {
@@ -1027,7 +1026,7 @@ static int bnep_handle_multi_addr_response(bnep_channel_t *channel, uint8_t *pac
         return 1 + 2;
     }
 
-    response_code = READ_NET_16(packet, 1);
+    response_code = big_endian_read_16(packet, 1);
 
     if (response_code == BNEP_RESP_FILTER_SUCCESS) {
         log_info("BNEP_MULTI_ADDR_RESPONSE: Multicast address filter set successfully for %s", bd_addr_to_str(channel->remote_addr));
@@ -1048,11 +1047,11 @@ static int bnep_handle_ethernet_packet(bnep_channel_t *channel, bd_addr_t addr_d
      */
     uint8_t *ethernet_packet = payload - 2 * sizeof(bd_addr_t) - sizeof(uint16_t);
     /* Restore the ethernet packet header */
-    BD_ADDR_COPY(ethernet_packet + pos, addr_dest);
+    bd_addr_copy(ethernet_packet + pos, addr_dest);
     pos += sizeof(bd_addr_t);
-    BD_ADDR_COPY(ethernet_packet + pos, addr_source);
+    bd_addr_copy(ethernet_packet + pos, addr_source);
     pos += sizeof(bd_addr_t);
-    net_store_16(ethernet_packet, pos, network_protocol_type);
+    big_endian_store_16(ethernet_packet, pos, network_protocol_type);
     /* Payload is just in place... */
 #else
     /* Copy ethernet frame to statically allocated buffer. This solution is more 
@@ -1061,11 +1060,11 @@ static int bnep_handle_ethernet_packet(bnep_channel_t *channel, bd_addr_t addr_d
     uint8_t ethernet_packet[BNEP_MTU_MIN];
 
     /* Restore the ethernet packet header */
-    BD_ADDR_COPY(ethernet_packet + pos, addr_dest);
+    bd_addr_copy(ethernet_packet + pos, addr_dest);
     pos += sizeof(bd_addr_t);
-    BD_ADDR_COPY(ethernet_packet + pos, addr_source);
+    bd_addr_copy(ethernet_packet + pos, addr_source);
     pos += sizeof(bd_addr_t);
-    net_store_16(ethernet_packet, pos, network_protocol_type);
+    big_endian_store_16(ethernet_packet, pos, network_protocol_type);
     pos += 2;
     memcpy(ethernet_packet + pos, payload, size);
 #endif
@@ -1157,15 +1156,15 @@ static int bnep_hci_event_handler(uint8_t *packet, uint16_t size)
     bnep_channel_t  *channel = NULL;
     uint8_t   status;
     
-    switch (packet[0]) {
+    switch (hci_event_packet_get_type(packet)) {
             
         /* Accept an incoming L2CAP connection on PSM_BNEP */
         case L2CAP_EVENT_INCOMING_CONNECTION:
             /* L2CAP event data: event(8), len(8), address(48), handle (16),  psm (16), source cid(16) dest cid(16) */
-            bt_flip_addr(event_addr, &packet[2]);
-            con_handle = READ_BT_16(packet,  8);
-            psm        = READ_BT_16(packet, 10); 
-            l2cap_cid  = READ_BT_16(packet, 12); 
+            reverse_bd_addr(&packet[2], event_addr);
+            con_handle = little_endian_read_16(packet,  8);
+            psm        = little_endian_read_16(packet, 10); 
+            l2cap_cid  = little_endian_read_16(packet, 12); 
 
             if (psm != PSM_BNEP) break;
 
@@ -1203,7 +1202,7 @@ static int bnep_hci_event_handler(uint8_t *packet, uint16_t size)
         /* Outgoing L2CAP connection has been opened -> store l2cap_cid, remote_addr */
         case L2CAP_EVENT_CHANNEL_OPENED: 
             /* Check if the l2cap channel has been opened for PSM_BNEP */ 
-            if (READ_BT_16(packet, 11) != PSM_BNEP) {
+            if (little_endian_read_16(packet, 11) != PSM_BNEP) {
                 break;
             }
 
@@ -1211,9 +1210,9 @@ static int bnep_hci_event_handler(uint8_t *packet, uint16_t size)
             log_info("L2CAP_EVENT_CHANNEL_OPENED for PSM_BNEP, status %u", status);
             
             /* Get the bnep channel fpr remote address */
-            con_handle = READ_BT_16(packet, 9);
-            l2cap_cid  = READ_BT_16(packet, 13);
-            bt_flip_addr(event_addr, &packet[3]);
+            con_handle = little_endian_read_16(packet, 9);
+            l2cap_cid  = little_endian_read_16(packet, 13);
+            reverse_bd_addr(&packet[3], event_addr);
             channel = bnep_channel_for_addr(event_addr);
             if (!channel) {
                 log_error("L2CAP_EVENT_CHANNEL_OPENED but no BNEP channel prepared");
@@ -1243,12 +1242,12 @@ static int bnep_hci_event_handler(uint8_t *packet, uint16_t size)
                     /* Initiate the connection request */
                     channel->state = BNEP_CHANNEL_STATE_WAIT_FOR_CONNECTION_RESPONSE;
                     bnep_channel_state_add(channel, BNEP_CHANNEL_STATE_VAR_SND_CONNECTION_REQUEST); 
-                    channel->max_frame_size = bnep_max_frame_size_for_l2cap_mtu(READ_BT_16(packet, 17));
+                    channel->max_frame_size = bnep_max_frame_size_for_l2cap_mtu(little_endian_read_16(packet, 17));
                     bnep_run();
                     break;
                 case BNEP_CHANNEL_STATE_WAIT_FOR_CONNECTION_REQUEST:
                     /* New information: channel mtu */
-                    channel->max_frame_size = bnep_max_frame_size_for_l2cap_mtu(READ_BT_16(packet, 17));
+                    channel->max_frame_size = bnep_max_frame_size_for_l2cap_mtu(little_endian_read_16(packet, 17));
                     break;
                 default:
                     log_error("L2CAP_EVENT_CHANNEL_OPENED: Invalid state: %d", channel->state);
@@ -1256,13 +1255,13 @@ static int bnep_hci_event_handler(uint8_t *packet, uint16_t size)
             }
             return 1;
                     
-        case DAEMON_EVENT_HCI_PACKET_SENT:
+        case L2CAP_EVENT_CAN_SEND_NOW:
             bnep_run();
             break;
             
         case L2CAP_EVENT_CHANNEL_CLOSED:
             // data: event (8), len(8), channel (16)
-            l2cap_cid   = READ_BT_16(packet, 2);
+            l2cap_cid   = little_endian_read_16(packet, 2);
             channel = bnep_channel_for_l2cap_cid(l2cap_cid);
             log_info("L2CAP_EVENT_CHANNEL_CLOSED cid 0x%0x, channel %p", l2cap_cid, channel);
 
@@ -1317,31 +1316,31 @@ static int bnep_l2cap_packet_handler(uint16_t l2cap_cid, uint8_t *packet, uint16
 
     switch(bnep_type) {
         case BNEP_PKT_TYPE_GENERAL_ETHERNET:
-            BD_ADDR_COPY(addr_dest, &packet[pos]);
+            bd_addr_copy(addr_dest, &packet[pos]);
             pos += sizeof(bd_addr_t);
-            BD_ADDR_COPY(addr_source, &packet[pos]);
+            bd_addr_copy(addr_source, &packet[pos]);
             pos += sizeof(bd_addr_t);
-            network_protocol_type = READ_NET_16(packet, pos);
+            network_protocol_type = big_endian_read_16(packet, pos);
             pos += 2;
             break;
         case BNEP_PKT_TYPE_COMPRESSED_ETHERNET:
-            BD_ADDR_COPY(addr_dest, channel->local_addr);
-            BD_ADDR_COPY(addr_source, channel->remote_addr);
-            network_protocol_type = READ_NET_16(packet, pos);
+            bd_addr_copy(addr_dest, channel->local_addr);
+            bd_addr_copy(addr_source, channel->remote_addr);
+            network_protocol_type = big_endian_read_16(packet, pos);
             pos += 2;
             break;
         case BNEP_PKT_TYPE_COMPRESSED_ETHERNET_SOURCE_ONLY:
-            BD_ADDR_COPY(addr_dest, channel->local_addr);
-            BD_ADDR_COPY(addr_source, &packet[pos]);
+            bd_addr_copy(addr_dest, channel->local_addr);
+            bd_addr_copy(addr_source, &packet[pos]);
             pos += sizeof(bd_addr_t);
-            network_protocol_type = READ_NET_16(packet, pos);
+            network_protocol_type = big_endian_read_16(packet, pos);
             pos += 2;
             break;
         case BNEP_PKT_TYPE_COMPRESSED_ETHERNET_DEST_ONLY:
-            BD_ADDR_COPY(addr_dest, &packet[pos]);
+            bd_addr_copy(addr_dest, &packet[pos]);
             pos += sizeof(bd_addr_t);
-            BD_ADDR_COPY(addr_source, channel->remote_addr);
-            network_protocol_type = READ_NET_16(packet, pos);
+            bd_addr_copy(addr_source, channel->remote_addr);
+            network_protocol_type = big_endian_read_16(packet, pos);
             pos += 2;
             break;
         case BNEP_PKT_TYPE_CONTROL:
@@ -1420,17 +1419,6 @@ void bnep_packet_handler(uint8_t packet_type, uint16_t l2cap_cid, uint8_t *packe
             break;
     }
     
-    if (handled) {
-        bnep_run();
-        return;
-    }
-
-    /* Forward non l2cap packages to application handler */
-    if (packet_type != L2CAP_DATA_PACKET) {
-        (*app_packet_handler)(packet_type, l2cap_cid, packet, size);
-        return;
-    }
-
     bnep_run();
 }
 

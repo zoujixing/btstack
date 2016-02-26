@@ -265,17 +265,17 @@ provides L2CAP service example code.
             ...
             case L2CAP_EVENT_INCOMING_CONNECTION:
                 bt_flip_addr(event_addr, &packet[2]);
-                handle     = READ_BT_16(packet, 8); 
-                psm        = READ_BT_16(packet, 10); 
-                local_cid  = READ_BT_16(packet, 12); 
+                handle     = little_endian_read_16(packet, 8); 
+                psm        = little_endian_read_16(packet, 10); 
+                local_cid  = little_endian_read_16(packet, 12); 
                 printf("L2CAP incoming connection requested.");
                 l2cap_accept_connection(local_cid);
                 break;
             case L2CAP_EVENT_CHANNEL_OPENED:
                 bt_flip_addr(event_addr, &packet[3]);
-                psm = READ_BT_16(packet, 11); 
-                local_cid = READ_BT_16(packet, 13); 
-                handle = READ_BT_16(packet, 9);
+                psm = little_endian_read_16(packet, 11); 
+                local_cid = little_endian_read_16(packet, 13); 
+                handle = little_endian_read_16(packet, 9);
                 if (packet[2] == 0) {
                     printf("Channel successfully opened.");
                 } else {
@@ -423,7 +423,7 @@ provides the RFCOMM service example code.
                 //data: event(8), len(8), address(48), channel(8), rfcomm_cid(16)
                 bt_flip_addr(event_addr, &packet[2]); 
                 rfcomm_channel_nr = packet[8];
-                rfcomm_channel_id = READ_BT_16(packet, 9);
+                rfcomm_channel_id = little_endian_read_16(packet, 9);
                 rfcomm_accept_connection(rfcomm_channel_id);
                 break;
             case RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE:
@@ -433,8 +433,8 @@ provides the RFCOMM service example code.
                     break;
                 } 
                // data: event(8), len(8), status (8), address (48), handle (16), server channel(8), rfcomm_cid(16), max frame size(16)
-               rfcomm_channel_id = READ_BT_16(packet, 12);
-               mtu = READ_BT_16(packet, 14);
+               rfcomm_channel_id = little_endian_read_16(packet, 12);
+               mtu = little_endian_read_16(packet, 14);
                printf("RFCOMM channel open succeeded.");
                break;
             case RFCOMM_EVENT_CREDITS:
@@ -505,8 +505,8 @@ RFCOMM example see Listing [below](#lst:SingleOutputBufferTryPH).
                 if (status) {
                     printf("RFCOMM channel open failed.");
                 } else {
-                    rfcomm_channel_id = READ_BT_16(packet, 12);
-                    rfcomm_mtu = READ_BT_16(packet, 14);
+                    rfcomm_channel_id = little_endian_read_16(packet, 12);
+                    rfcomm_mtu = little_endian_read_16(packet, 14);
                     printf("RFCOMM channel opened, mtu = %u.", rfcomm_mtu);
                 }
                 break;
@@ -667,11 +667,11 @@ registered callback, as shown in Listing [below](#lst:SDPClientRFCOMM).
         sdp_query_rfcomm_service_event_t * ve;
                 
         switch (event->type){
-            case SDP_QUERY_RFCOMM_SERVICE:
+            case SDP_EVENT_QUERY_RFCOMM_SERVICE:
                 ve = (sdp_query_rfcomm_service_event_t*) event;
                 printf("Service name: '%s', RFCOMM port %u\n", ve->service_name, ve->channel_nr);
                 break;
-            case SDP_QUERY_COMPLETE:
+            case SDP_EVENT_QUERY_COMPLETE:
                 report_found_services();
                 printf("Client query response done with status %d. \n", ce->status);
                 break;
@@ -824,13 +824,13 @@ Resolving (IR) key. After an LE connection gets established, BTstack
 automatically tries to resolve the address of this device. During this
 lookup, BTstack will emit the following events:
 
--   *SM_IDENTITY_RESOLVING_STARTED* to mark the start of a lookup,
+-   *SM_EVENT_IDENTITY_RESOLVING_STARTED* to mark the start of a lookup,
 
 and later:
 
--   *SM_IDENTITY_RESOLVING_SUCCEEDED* on lookup success, or
+-   *SM_EVENT_IDENTITY_RESOLVING_SUCCEEDED* on lookup success, or
 
--   *SM_IDENTITY_RESOLVING_FAILED* on lookup failure.
+-   *SM_EVENT_IDENTITY_RESOLVING_FAILED* on lookup failure.
 
 ### Bonding process
 
@@ -851,16 +851,16 @@ Depending on the authentication requirements, available OOB data, and
 the enabled STK generation methods, BTstack will request feedback from
 the app in the form of an event:
 
--   *SM_PASSKEY_INPUT_NUMBER*: request user to input a passkey
+-   *SM_EVENT_PASSKEY_INPUT_NUMBER*: request user to input a passkey
 
--   *SM_PASSKEY_DISPLAY_NUMBER*: show a passkey to the user
+-   *SM_EVENT_PASSKEY_DISPLAY_NUMBER*: show a passkey to the user
 
--   *SM_JUST_WORKS_REQUEST*: request a user to accept a Just Works
+-   *SM_EVENT_JUST_WORKS_REQUEST*: request a user to accept a Just Works
     pairing
 
 To stop the bonding process, *sm_bonding_decline* should be called.
 Otherwise, *sm_just_works_confirm* or *sm_passkey_input* can be
 called.
 
-After the bonding process, *SM_PASSKEY_DISPLAY_CANCEL* is emitted to
+After the bonding process, *SM_EVENT_PASSKEY_DISPLAY_CANCEL* is emitted to
 update the user interface.

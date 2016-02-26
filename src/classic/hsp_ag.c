@@ -37,7 +37,7 @@
  
 // *****************************************************************************
 //
-// Minimal setup for HSP Audio Gateway (!! UNDER DEVELOPMENT !!)
+// HSP Audio Gateway
 //
 // *****************************************************************************
 
@@ -48,19 +48,18 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "hci_cmd.h"
-#include "btstack_run_loop.h"
-
-#include "hci.h"
-#include "btstack_memory.h"
-#include "hci_dump.h"
-#include "l2cap.h"
-#include "classic/sdp_query_rfcomm.h"
-#include "classic/sdp.h"
 #include "btstack_debug.h"
+#include "btstack_event.h"
+#include "btstack_memory.h"
+#include "btstack_run_loop.h"
+#include "classic/sdp_server.h"
+#include "classic/sdp_query_rfcomm.h"
+#include "classic/sdp_util.h"
+#include "hci.h"
+#include "hci_cmd.h"
+#include "hci_dump.h"
 #include "hsp_ag.h"
-
-#define RFCOMM_SERVER_CHANNEL 1
+#include "l2cap.h"
 
 #define HSP_HS_BUTTON_PRESS "AT+CKPD=200"
 #define HSP_HS_AT_CKPD "AT+CKPD\r\n"
@@ -84,8 +83,6 @@ static uint16_t sco_handle = 0;
 static uint16_t rfcomm_handle = 0;
 static btstack_timer_source_t hs_timeout;
 
-// static uint8_t connection_state = 0;
-
 static int ag_microphone_gain = -1;
 static int ag_speaker_gain = -1;
 static uint8_t ag_ring = 0;
@@ -94,10 +91,12 @@ static uint8_t ag_send_error = 0;
 static uint8_t ag_num_button_press_received = 0;
 static uint8_t ag_support_custom_commands = 0;
 
+static btstack_packet_callback_registration_t hci_event_callback_registration;
+
 typedef enum {
     HSP_IDLE,
     HSP_SDP_QUERY_RFCOMM_CHANNEL,
-    HSP_W4_SDP_QUERY_COMPLETE,
+    HSP_W4_SDP_EVENT_QUERY_COMPLETE,
     HSP_W4_RFCOMM_CONNECTED,
     HSP_W4_RING_ANSWER,
     HSP_W4_USER_ACTION,
@@ -118,7 +117,7 @@ static hsp_ag_callback_t hsp_ag_callback;
 
 static void hsp_run();
 static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
-static void handle_query_rfcomm_event(sdp_query_event_t * event, void * context);
+static void handle_query_rfcomm_event(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 
 static void dummy_notify(uint8_t * event, uint16_t size){}
 
@@ -140,17 +139,17 @@ static void emit_event(uint8_t event_subtype, uint8_t value){
 }
 
 static void emit_event_audio_connected(uint8_t status, uint16_t handle){
-    if (!hsp_hs_callback) return;
+    if (!hsp_ag_callback) return;
     uint8_t event[6];
     event[0] = HCI_EVENT_HSP_META;
     event[1] = sizeof(event) - 2;
     event[2] = HSP_SUBEVENT_AUDIO_CONNECTION_COMPLETE;
     event[3] = status;
-    bt_store_16(event, 4, handle);
-    (*hsp_hs_callback)(event, sizeof(event));
+    little_endian_store_16(event, 4, handle);
+    (*hsp_ag_callback)(event, sizeof(event));
 }
 
-void hsp_ag_create_service(uint8_t * service, int rfcomm_channel_nr, const char * name){
+void hsp_ag_create_sdp_record(uint8_t * service, uint32_t service_record_handle, int rfcomm_channel_nr, const char * name){
     uint8_t* attribute;
     de_create_sequence(service);
 
@@ -221,14 +220,13 @@ static int hsp_ag_send_str_over_rfcomm(uint16_t cid, char * command){
     if (!rfcomm_can_send_packet_now(cid)) return 1;
     int err = rfcomm_send(cid, (uint8_t*) command, strlen(command));
     if (err){
-        printf("rfcomm_send -> error 0X%02x", err);
+        log_error("rfcomm_send_internal -> error 0X%02x", err);
         return err;
     }
-    printf("Send string: \"%s\"\n", command); 
     return err;
 }
 
-void hsp_ag_support_custom_commands(int enable){
+void hsp_ag_enable_custom_commands(int enable){
     ag_support_custom_commands = enable;
 }
 
@@ -236,7 +234,6 @@ int hsp_ag_send_result(char * result){
     if (!ag_support_custom_commands) return 1;
     return hsp_ag_send_str_over_rfcomm(rfcomm_cid, result);
 }
-
 
 static void hsp_ag_reset_state(void){
     hsp_state = HSP_IDLE;
@@ -257,15 +254,15 @@ static void hsp_ag_reset_state(void){
 }
 
 void hsp_ag_init(uint8_t rfcomm_channel_nr){
+    // register for HCI events
+    hci_event_callback_registration.callback = &packet_handler;
+    hci_add_event_handler(&hci_event_callback_registration);
+
     // init L2CAP
     l2cap_init();
-    l2cap_register_packet_handler(packet_handler);
 
     rfcomm_init();
-    rfcomm_register_packet_handler(packet_handler);
-    rfcomm_register_service(rfcomm_channel_nr, 0xffff);  // reserved channel, mtu limited by l2cap
-
-    sdp_query_rfcomm_register_callback(handle_query_rfcomm_event, NULL);
+    rfcomm_register_service(packet_handler, rfcomm_channel_nr, 0xffff);  // reserved channel, mtu limited by l2cap
 
     hsp_ag_reset_state();
 }
@@ -298,7 +295,7 @@ void hsp_ag_disconnect(void){
 
 void hsp_ag_set_microphone_gain(uint8_t gain){
     if (gain < 0 || gain >15) {
-        printf("Gain must be in interval [0..15], it is given %d\n", gain);
+        log_error("Gain must be in interval [0..15], it is given %d", gain);
         return; 
     }
     ag_microphone_gain = gain;
@@ -308,25 +305,27 @@ void hsp_ag_set_microphone_gain(uint8_t gain){
 // AG +VGS=5  [0..15] ; HS AT+VGM=6 | AG OK
 void hsp_ag_set_speaker_gain(uint8_t gain){
     if (gain < 0 || gain >15) {
-        printf("Gain must be in interval [0..15], it is given %d\n", gain);
+        log_error("Gain must be in interval [0..15], it is given %d", gain);
         return; 
     }
     ag_speaker_gain = gain;
     hsp_run();
 }  
 
-static void hsp_timeout_handler(btstack_timer_source_t * timer){
+static void hsp_ringing_timeout_handler(btstack_timer_source_t * timer){
     ag_ring = 1;
-}
-
-static void hsp_timeout_start(void){
-    btstack_run_loop_remove_timer(&hs_timeout);
-    btstack_run_loop_set_timer_handler(&hs_timeout, hsp_timeout_handler);
     btstack_run_loop_set_timer(&hs_timeout, 2000); // 2 seconds timeout
     btstack_run_loop_add_timer(&hs_timeout);
 }
 
-static void hsp_timeout_stop(void){
+static void hsp_ringing_timer_start(void){
+    btstack_run_loop_remove_timer(&hs_timeout);
+    btstack_run_loop_set_timer_handler(&hs_timeout, hsp_ringing_timeout_handler);
+    btstack_run_loop_set_timer(&hs_timeout, 2000); // 2 seconds timeout
+    btstack_run_loop_add_timer(&hs_timeout);
+}
+
+static void hsp_ringing_timer_stop(void){
     btstack_run_loop_remove_timer(&hs_timeout);
 } 
 
@@ -334,14 +333,14 @@ void hsp_ag_start_ringing(void){
     if (hsp_state != HSP_W2_CONNECT_SCO) return;
     ag_ring = 1;
     hsp_state = HSP_W4_RING_ANSWER;
-    hsp_timeout_start();
+    hsp_ringing_timer_start();
 }
 
 void hsp_ag_stop_ringing(void){
     ag_ring = 0;
     ag_num_button_press_received = 0;
     hsp_state = HSP_W2_CONNECT_SCO;
-    hsp_timeout_stop();
+    hsp_ringing_timer_stop();
 }
 
 static void hsp_run(void){
@@ -367,9 +366,9 @@ static void hsp_run(void){
     
     switch (hsp_state){
         case HSP_SDP_QUERY_RFCOMM_CHANNEL:
-            hsp_state = HSP_W4_SDP_QUERY_COMPLETE;
-            printf("Start SDP query %s, 0x%02x\n", bd_addr_to_str(remote), SDP_HSP);
-            sdp_query_rfcomm_channel_and_name_for_uuid(remote, SDP_HSP);
+            hsp_state = HSP_W4_SDP_EVENT_QUERY_COMPLETE;
+            log_info("Start SDP query %s, 0x%02x", bd_addr_to_str(remote), SDP_HSP);
+            sdp_query_rfcomm_channel_and_name_for_uuid(&handle_query_rfcomm_event, remote, SDP_HSP);
             break;
 
         case HSP_W4_RING_ANSWER:
@@ -444,7 +443,6 @@ static void hsp_run(void){
 
 
 static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
-    // printf("packet_handler type %u, packet[0] %x\n", packet_type, packet[0]);
     if (packet_type == RFCOMM_DATA_PACKET){
         while (size > 0 && (packet[0] == '\n' || packet[0] == '\r')){
             size--;
@@ -452,7 +450,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
         }
 
         if (strncmp((char *)packet, HSP_HS_BUTTON_PRESS, strlen(HSP_HS_BUTTON_PRESS)) == 0){
-            printf("Received button press %s\n", HSP_HS_BUTTON_PRESS);
+            log_info("Received button press %s", HSP_HS_BUTTON_PRESS);
             ag_num_button_press_received++;
             ag_send_ok = 1;
             if (hsp_state == HSP_ACTIVE && ag_num_button_press_received >=2){
@@ -473,11 +471,12 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
             ag_send_error = 1;
             if (!hsp_ag_callback) return;
             // re-use incoming buffer to avoid reserving large buffers - ugly but efficient
-            uint8_t * event = packet - 3;
+            uint8_t * event = packet - 4;
             event[0] = HCI_EVENT_HSP_META;
-            event[1] = size + 1;
+            event[1] = size + 2;
             event[2] = HSP_SUBEVENT_HS_COMMAND;
-            (*hsp_ag_callback)(event, size+3);
+            event[3] = size;
+            (*hsp_ag_callback)(event, size+4);
         }
 
         hsp_run();
@@ -485,28 +484,15 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
     }
 
     if (packet_type != HCI_EVENT_PACKET) return;
-    uint8_t event = packet[0];
+    uint8_t event = hci_event_packet_get_type(packet);
     bd_addr_t event_addr;
     uint16_t handle;
 
     switch (event) {
-        case BTSTACK_EVENT_STATE:
-            // BTstack activated, get started 
-            if (packet[2] == HCI_STATE_WORKING){
-                printf("BTstack activated, get started .\n");
-            }
-            break;
-
-        case HCI_EVENT_PIN_CODE_REQUEST:
-            // inform about pin code request
-            printf("Pin code request - using '0000'\n\r");
-            bt_flip_addr(event_addr, &packet[2]);
-            hci_send_cmd(&hci_pin_code_request_reply, &event_addr, 4, "0000");
-            break;
         case HCI_EVENT_SYNCHRONOUS_CONNECTION_COMPLETE:{
             int index = 2;
             uint8_t status = packet[index++];
-            sco_handle = READ_BT_16(packet, index);
+            sco_handle = little_endian_read_16(packet, index);
             index+=2;
             bd_addr_t address; 
             memcpy(address, &packet[index], 6);
@@ -514,9 +500,9 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
             uint8_t link_type = packet[index++];
             uint8_t transmission_interval = packet[index++];  // measured in slots
             uint8_t retransmission_interval = packet[index++];// measured in slots
-            uint16_t rx_packet_length = READ_BT_16(packet, index); // measured in bytes
+            uint16_t rx_packet_length = little_endian_read_16(packet, index); // measured in bytes
             index+=2;
-            uint16_t tx_packet_length = READ_BT_16(packet, index); // measured in bytes
+            uint16_t tx_packet_length = little_endian_read_16(packet, index); // measured in bytes
             index+=2;
             uint8_t air_mode = packet[index];
 
@@ -527,14 +513,14 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
             }
             switch (link_type){
                 case 0x00:
-                    printf("SCO Connection established. \n");
+                    log_info("SCO Connection established.");
                     if (transmission_interval != 0) log_error("SCO Connection: transmission_interval not zero: %d.", transmission_interval);
                     if (retransmission_interval != 0) log_error("SCO Connection: retransmission_interval not zero: %d.", retransmission_interval);
                     if (rx_packet_length != 0) log_error("SCO Connection: rx_packet_length not zero: %d.", rx_packet_length);
                     if (tx_packet_length != 0) log_error("SCO Connection: tx_packet_length not zero: %d.", tx_packet_length);
                     break;
                 case 0x02:
-                    printf("eSCO Connection established. \n");
+                    log_info("eSCO Connection established.");
                     break;
                 default:
                     log_error("(e)SCO reserved link_type 0x%2x", link_type);
@@ -558,28 +544,27 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
             // data: event (8), len(8), address(48), channel (8), rfcomm_cid (16)
             if (hsp_state != HSP_IDLE) return;
 
-            bt_flip_addr(event_addr, &packet[2]); 
-            rfcomm_cid = READ_BT_16(packet, 9);
-            printf("RFCOMM channel %u requested for %s\n", packet[8], bd_addr_to_str(event_addr));
+            reverse_bd_addr(&packet[2], event_addr); 
+            rfcomm_cid = little_endian_read_16(packet, 9);
+            log_info("RFCOMM channel %u requested for %s", packet[8], bd_addr_to_str(event_addr));
             rfcomm_accept_connection(rfcomm_cid);
 
             hsp_state = HSP_W4_RFCOMM_CONNECTED;
-            
             break;
 
         case RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE:
-            printf("RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE packet_handler type %u, packet[0] %x\n", packet_type, packet[0]);
+            log_info("RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE packet_handler type %u, packet[0] %x", packet_type, packet[0]);
             // data: event(8), len(8), status (8), address (48), handle(16), server channel(8), rfcomm_cid(16), max frame size(16)
             if (packet[2]) {
-                printf("RFCOMM channel open failed, status %u\n", packet[2]);
+                log_info("RFCOMM channel open failed, status %u§", packet[2]);
                 hsp_ag_reset_state();
                 emit_event(HSP_SUBEVENT_AUDIO_CONNECTION_COMPLETE, packet[2]);
             } else {
                 // data: event(8) , len(8), status (8), address (48), handle (16), server channel(8), rfcomm_cid(16), max frame size(16)
-                rfcomm_handle = READ_BT_16(packet, 9);
-                rfcomm_cid = READ_BT_16(packet, 12);
-                mtu = READ_BT_16(packet, 14);
-                printf("RFCOMM channel open succeeded. New RFCOMM Channel ID %u, max frame size %u, state %d\n", rfcomm_cid, mtu, hsp_state);
+                rfcomm_handle = little_endian_read_16(packet, 9);
+                rfcomm_cid = little_endian_read_16(packet, 12);
+                mtu = little_endian_read_16(packet, 14);
+                log_info("RFCOMM channel open succeeded. New RFCOMM Channel ID %u, max frame size %u, state %d", rfcomm_cid, mtu, hsp_state);
 
                 switch (hsp_state){
                     case HSP_W4_RFCOMM_CONNECTED:
@@ -590,32 +575,24 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
                         hsp_state = HSP_W2_DISCONNECT_RFCOMM;
                         break;
                     default:
-                        printf("no valid state\n");
+                        log_error("no valid state");
                         break;
                 }
             }
             break;
-        case DAEMON_EVENT_HCI_PACKET_SENT:
-        case RFCOMM_EVENT_CREDITS:
-            break;
         
         case HCI_EVENT_DISCONNECTION_COMPLETE:
-            if (hsp_state != HSP_W4_SCO_DISCONNECTED){
-                log_info("received gap disconnect in wrong hsp state");
-            }
-            handle = READ_BT_16(packet,3);
+            handle = little_endian_read_16(packet,3);
             if (handle == sco_handle){
-                printf("SCO disconnected, w2 disconnect RFCOMM\n");
+                log_info("SCO disconnected, w2 disconnect RFCOMM");
                 sco_handle = 0;
                 hsp_state = HSP_W2_DISCONNECT_RFCOMM;
                 break;
             }
             break;
+            
         case RFCOMM_EVENT_CHANNEL_CLOSED:
-            if (hsp_state != HSP_W4_RFCOMM_DISCONNECTED){
-                log_info("received RFCOMM disconnect in wrong hsp state");
-            }
-            printf("RFCOMM channel closed\n");
+            log_info("RFCOMM channel closed");
             hsp_ag_reset_state();
             emit_event(HSP_SUBEVENT_AUDIO_DISCONNECTION_COMPLETE,0);
             break;
@@ -625,29 +602,23 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
     hsp_run();
 }
 
-static void handle_query_rfcomm_event(sdp_query_event_t * event, void * context){
-    sdp_query_rfcomm_service_event_t * ve;
-    sdp_query_complete_event_t * ce;
-            
-    switch (event->type){
-        case SDP_QUERY_RFCOMM_SERVICE:
-            ve = (sdp_query_rfcomm_service_event_t*) event;
-            channel_nr = ve->channel_nr;
-            printf("** Service name: '%s', RFCOMM port %u\n", ve->service_name, channel_nr);
+static void handle_query_rfcomm_event(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
+    switch (packet[0]){
+        case SDP_EVENT_QUERY_RFCOMM_SERVICE:
+            channel_nr = sdp_event_query_rfcomm_service_get_rfcomm_channel(packet);
+            log_info("** Service name: '%s', RFCOMM port %u", sdp_event_query_rfcomm_service_get_name(packet), channel_nr);
             break;
-        case SDP_QUERY_COMPLETE:
-            ce = (sdp_query_complete_event_t*) event;
-            
+        case SDP_EVENT_QUERY_COMPLETE:
             if (channel_nr > 0){
                 hsp_state = HSP_W4_RFCOMM_CONNECTED;
-                printf("RFCOMM create channel. state %d\n", HSP_W4_RFCOMM_CONNECTED);
-                rfcomm_create_channel(remote, channel_nr, NULL); 
+                log_info("RFCOMM create channel. state %d", HSP_W4_RFCOMM_CONNECTED);
+                rfcomm_create_channel(packet_handler, remote, channel_nr, NULL); 
                 break;
             }
             hsp_ag_reset_state();
-            printf("Service not found, status %u.\n", ce->status);
-            if (ce->status){
-                emit_event(HSP_SUBEVENT_AUDIO_CONNECTION_COMPLETE, ce->status);
+            log_info("Service not found, status %u.\n", sdp_event_query_complete_get_status(packet));
+            if (sdp_event_query_complete_get_status(packet)){
+                emit_event(HSP_SUBEVENT_AUDIO_CONNECTION_COMPLETE, sdp_event_query_complete_get_status(packet));
             } else {
                 emit_event(HSP_SUBEVENT_AUDIO_CONNECTION_COMPLETE, SDP_SERVICE_NOT_FOUND);
             }

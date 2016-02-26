@@ -250,7 +250,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 -(BTDevice*) deviceForAddress:(bd_addr_t) address{
 	for (BTDevice *device in discoveredDevices){
 		// NSLog(@"compare %@ to %@", [BTDevice stringForAddress:address], [device addressString]); 
-		if ( BD_ADDR_CMP(address, [device address]) == 0){
+		if ( bd_addr_cmp(address, [device address]) == 0){
 			return device;
 		}
 	}
@@ -263,8 +263,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 		case kW4SysBTState:
 		case kW4SysBTDisabled:
 			
-			// BTSTACK_EVENT_SYSTEM_BLUETOOTH_ENABLED
-			if ( packet[0] == BTSTACK_EVENT_SYSTEM_BLUETOOTH_ENABLED){
+			// DAEMON_EVENT_SYSTEM_BLUETOOTH_ENABLED
+			if ( hci_event_packet_get_type(packet) == DAEMON_EVENT_SYSTEM_BLUETOOTH_ENABLED){
 				if (packet[2]){
 					// system bt on - first time try to disable it
 					if ( state == kW4SysBTState) {
@@ -289,7 +289,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 			break;
 			
 		case kW4Activated:
-			switch (packet[0]){
+			switch (hci_event_packet_get_type(packet)){
 				case BTSTACK_EVENT_STATE:
 					if (packet[2] == HCI_STATE_WORKING) {
 						state = kActivated;
@@ -307,21 +307,21 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 			break;
 			
 		case kW4Deactivated:
-			if (packet[0] != BTSTACK_EVENT_STATE && packet[2] == HCI_STATE_OFF){
+			if (hci_event_packet_get_type(packet) != BTSTACK_EVENT_STATE && packet[2] == HCI_STATE_OFF){
 				state = kDeactivated;
 				[self sendDeactivated];
 			}
 			break;
 		
 		case kActivated:
-			if (packet[0] != BTSTACK_EVENT_STATE && packet[2] == HCI_STATE_FALLING_ASLEEP){
+			if (hci_event_packet_get_type(packet) != BTSTACK_EVENT_STATE && packet[2] == HCI_STATE_FALLING_ASLEEP){
 				state = kSleeping;
 				[self sendSleepEnter];
 			}
 			break;
 			
 		case kSleeping:
-			if (packet[0] != BTSTACK_EVENT_STATE && packet[2] == HCI_STATE_WORKING){
+			if (hci_event_packet_get_type(packet) != BTSTACK_EVENT_STATE && packet[2] == HCI_STATE_WORKING){
 				state = kActivated;
 				[self sendSleepExit];
 			}
@@ -403,7 +403,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 			break;
 			
 		case kW4InquiryMode:
-			if (packet[0] == HCI_EVENT_COMMAND_COMPLETE && COMMAND_COMPLETE_EVENT(packet, hci_write_inquiry_mode) ) {
+			if (hci_event_packet_get_type(packet) == HCI_EVENT_COMMAND_COMPLETE && COMMAND_COMPLETE_EVENT(packet, hci_write_inquiry_mode) ) {
 				discoveryState = kInquiry;
 				bt_send_cmd(&hci_inquiry, HCI_INQUIRY_LAP, INQUIRY_INTERVAL, 0);
 				[self sendDiscoveryInquiry];
@@ -412,7 +412,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 		
 		case kInquiry:
 			
-			switch (packet[0]){
+			switch (hci_event_packet_get_type(packet)){
 				case HCI_EVENT_INQUIRY_RESULT:
 					numResponses = packet[2];
 					for (i=0; i<numResponses ; i++){
@@ -426,8 +426,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 						}
 						// update
 						device.pageScanRepetitionMode =   packet [3 + numResponses*(6)         + i*1];
-						device.classOfDevice = READ_BT_24(packet, 3 + numResponses*(6+1+1+1)   + i*3);
-						device.clockOffset =   READ_BT_16(packet, 3 + numResponses*(6+1+1+1+3) + i*2) & 0x7fff;
+						device.classOfDevice = little_endian_read_24(packet, 3 + numResponses*(6+1+1+1)   + i*3);
+						device.clockOffset =   little_endian_read_16(packet, 3 + numResponses*(6+1+1+1+3) + i*2) & 0x7fff;
 						device.rssi  = 0;
 						[self sendDeviceInfo:device];
 					}
@@ -448,9 +448,9 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 						}
 						device.pageScanRepetitionMode =   packet [offset];
 						offset += 2; // pageScanRepetitionMode + Reserved
-						device.classOfDevice = READ_BT_24(packet, offset);
+						device.classOfDevice = little_endian_read_24(packet, offset);
 						offset += 3;
-						device.clockOffset = READ_BT_16(packet, offset) & 0x7fff;
+						device.clockOffset = little_endian_read_16(packet, offset) & 0x7fff;
 						offset += 2;
 						device.rssi = packet[offset];
 						offset += 1;
@@ -458,7 +458,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 					}
 					break;
 				}
-				case BTSTACK_EVENT_REMOTE_NAME_CACHED:
+				case DAEMON_EVENT_REMOTE_NAME_CACHED:
                     [self handleRemoteNameCached:packet];
 					break;
 					
@@ -472,20 +472,20 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 			break;
 			
 		case kRemoteName:
-			if (packet[0] == HCI_EVENT_REMOTE_NAME_REQUEST_COMPLETE){
+			if (hci_event_packet_get_type(packet) == HCI_EVENT_REMOTE_NAME_REQUEST_COMPLETE){
 				[self handleRemoteName:packet];
 			}
 			break;
 
 		case kW4InquiryModeBeforeStop:
-			if (packet[0] == HCI_EVENT_COMMAND_COMPLETE && COMMAND_COMPLETE_EVENT(packet, hci_write_inquiry_mode) ) {
+			if (hci_event_packet_get_type(packet) == HCI_EVENT_COMMAND_COMPLETE && COMMAND_COMPLETE_EVENT(packet, hci_write_inquiry_mode) ) {
 				discoveryState = kInactive;
 				[self sendDiscoveryStoppedEvent];
 			}
 			break;
 			
 		case kW4InquiryStop:
-			if (packet[0] == HCI_EVENT_INQUIRY_COMPLETE
+			if (hci_event_packet_get_type(packet) == HCI_EVENT_INQUIRY_COMPLETE
 			||	COMMAND_COMPLETE_EVENT(packet, hci_inquiry_cancel)) {
 				discoveryState = kInactive;
 				[self sendDiscoveryStoppedEvent];
@@ -493,7 +493,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 			break;
 			
 		case kW4RemoteNameBeforeStop:
-			if (packet[0] == HCI_EVENT_REMOTE_NAME_REQUEST_COMPLETE
+			if (hci_event_packet_get_type(packet) == HCI_EVENT_REMOTE_NAME_REQUEST_COMPLETE
 			||  COMMAND_COMPLETE_EVENT(packet, hci_remote_name_request_cancel)){
 				discoveryState = kInactive;
 				[self sendDiscoveryStoppedEvent];
@@ -555,7 +555,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 	// ...f (state 
 	// store params
 	connType = 0;
-	BD_ADDR_COPY(&connAddr, address);
+	bd_addr_copy(&connAddr, address);
 	connPSM = psm;
 	connAuth = authentication;
 #endif
@@ -576,7 +576,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 #if 0
 	// store params
 	connType = 1;
-	BD_ADDR_COPY(&connAddr, address);
+	bd_addr_copy(&connAddr, address);
 	connChan = channel;
 	connAuth = authentication;
 #endif

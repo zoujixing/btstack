@@ -8,7 +8,7 @@ OPENCM3_DIR = libopencm3
 LDSCRIPT = stm32f1-nucleo.ld
 
 BTSTACK_ROOT = ../..
-VPATH  = $(BTSTACK_ROOT)/example/embedded
+VPATH  = $(BTSTACK_ROOT)/example
 VPATH += $(BTSTACK_ROOT)/src
 VPATH += $(BTSTACK_ROOT)/src/ble
 VPATH += $(BTSTACK_ROOT)/src/classic
@@ -34,16 +34,14 @@ COMMON = \
     l2cap_signaling.c         \
 	remote_device_db_memory.c \
 	rfcomm.c			      \
-    sdp.c			          \
+    sdp_server.c			          \
     sdp_util.c                \
     btstack_util.c			          \
-    sdp_parser.c              \
     sdp_client.c              \
-    sdp_query_util.c		  \
 	sdp_query_rfcomm.c 		  \
 
 BLE = \
-	att.c 					  \
+	att_db.c 					  \
 	att_server.c     		  \
 	le_device_db_memory.c  \
 	sm.c                      \

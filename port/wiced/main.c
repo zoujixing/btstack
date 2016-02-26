@@ -58,7 +58,7 @@ static const hci_transport_config_uart_t hci_transport_config_uart = {
 
 extern int btstack_main(void);
 
-static int main_sscan_bd_addr(const char * addr_string, bd_addr_t addr){
+static int main_sscanf_bd_addr(const char * addr_string, bd_addr_t addr){
     unsigned int bd_addr_buffer[BD_ADDR_LEN];  //for sscanf, integer needed
     // reset result buffer
     memset(bd_addr_buffer, 0, sizeof(bd_addr_buffer));
@@ -92,14 +92,13 @@ void application_start(void){
     // hci_dump_open(NULL, HCI_DUMP_STDOUT);
 
     // init HCI
-    const hci_transport_t * transport = hci_transport_h4_instance();
-    remote_device_db_t * remote_db = (remote_device_db_t *) &remote_device_db_memory;
-    hci_init(transport, (void*) &hci_transport_config_uart, remote_db);
+    hci_init(hci_transport_h4_instance, (void*) &hci_transport_config_uart);
+    hci_set_link_key_db(btstack_link_key_db_memory_instance());
     hci_set_chipset(btstack_chipset_bcm_instance());
 
     // use WIFI Mac address + 1 for Bluetooth
     bd_addr_t dummy = { 1,2,3,4,5,6};
-    main_sscan_bd_addr(&wifi_mac_address[8], dummy);
+    main_sscanf_bd_addr(&wifi_mac_address[8], dummy);
     dummy[5]++;
     hci_set_bd_addr(dummy);
     

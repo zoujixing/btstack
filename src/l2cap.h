@@ -102,11 +102,18 @@ typedef struct {
     // linked list - assert: first field
     btstack_linked_item_t    item;
     
+    // packet handler
+    btstack_packet_handler_t packet_handler;
+
+    // timer
+    btstack_timer_source_t rtx; // also used for ertx
+
     L2CAP_STATE state;
     L2CAP_CHANNEL_STATE_VAR state_var;
-    
+
+    // info
     bd_addr_t address;
-    hci_con_handle_t handle;
+    hci_con_handle_t con_handle;
     
     uint8_t   remote_sig_id;    // used by other side, needed for delayed response
     uint8_t   local_sig_id;     // own signaling identifier
@@ -124,11 +131,7 @@ typedef struct {
     gap_security_level_t required_security_level;
 
     uint8_t   reason; // used in decline internal
-    
-    btstack_timer_source_t rtx; // also used for ertx
-
-    // internal connection
-    btstack_packet_handler_t packet_handler;
+    uint8_t   waiting_for_can_send_now;
     
 } l2cap_channel_t;
 
@@ -162,14 +165,13 @@ typedef struct l2cap_signaling_response {
 } l2cap_signaling_response_t;
     
 
-
-int  l2cap_can_send_fixed_channel_packet_now(uint16_t handle);
 void l2cap_register_fixed_channel(btstack_packet_handler_t packet_handler, uint16_t channel_id);
-int  l2cap_send_connectionless(uint16_t handle, uint16_t cid, uint8_t *data, uint16_t len);
-int  l2cap_send_prepared_connectionless(uint16_t handle, uint16_t cid, uint16_t len);
+int  l2cap_can_send_fixed_channel_packet_now(hci_con_handle_t con_handle, uint16_t channel_id);
+int  l2cap_send_connectionless(hci_con_handle_t con_handle, uint16_t cid, uint8_t *data, uint16_t len);
+int  l2cap_send_prepared_connectionless(hci_con_handle_t con_handle, uint16_t cid, uint16_t len);
 
 // PTS Testing
-int l2cap_send_echo_request(uint16_t handle, uint8_t *data, uint16_t len);
+int l2cap_send_echo_request(hci_con_handle_t con_handle, uint8_t *data, uint16_t len);
 void l2cap_require_security_level_2_for_outgoing_sdp(void);
 
 /* API_START */
@@ -180,7 +182,7 @@ void l2cap_require_security_level_2_for_outgoing_sdp(void);
 void l2cap_init(void);
 
 /** 
- * @brief Registers a packet handler that handles HCI and general BTstack events.
+ * @brief Registers packet handler for LE Connection Parameter Update events
  */
 void l2cap_register_packet_handler(void (*handler)(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size));
 
@@ -244,6 +246,10 @@ void l2cap_decline_connection(uint16_t local_cid, uint8_t reason);
  * @brief Check if outgoing buffer is available and that there's space on the Bluetooth module
  */
 int  l2cap_can_send_packet_now(uint16_t local_cid);    
+
+/** 
+ * @brief Check if there's space on the Bluetooth module
+ */
 int  l2cap_can_send_prepared_packet_now(uint16_t local_cid);
 
 /** 

@@ -37,7 +37,7 @@
  
 // *****************************************************************************
 //
-// Minimal setup for HFP Audio Gateway (AG) unit (!! UNDER DEVELOPMENT !!)
+// HFP Audio Gateway (AG) unit
 //
 // *****************************************************************************
 
@@ -55,13 +55,29 @@
 #include "btstack_memory.h"
 #include "hci_dump.h"
 #include "l2cap.h"
-#include "classic/sdp_query_rfcomm.h"
-#include "classic/sdp.h"
 #include "btstack_debug.h"
 #include "classic/hfp.h"
-#include "classic/hfp_gsm_model.h"
 #include "classic/hfp_ag.h"
+#include "classic/hfp_gsm_model.h"
+#include "classic/sdp_query_rfcomm.h"
+#include "classic/sdp_server.h"
+#include "classic/sdp_util.h"
 
+// private prototypes
+static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
+static void hfp_run_for_context(hfp_connection_t *context);
+static void hfp_ag_setup_audio_connection(hfp_connection_t * connection);
+static void hfp_ag_hf_start_ringing(hfp_connection_t * context);
+
+// public prototypes
+hfp_generic_status_indicator_t * get_hfp_generic_status_indicators();
+int get_hfp_generic_status_indicators_nr();
+void set_hfp_generic_status_indicators(hfp_generic_status_indicator_t * indicators, int indicator_nr);
+void set_hfp_ag_indicators(hfp_ag_indicator_t * indicators, int indicator_nr);
+int get_hfp_ag_indicators_nr(hfp_connection_t * context);
+hfp_ag_indicator_t * get_hfp_ag_indicators(hfp_connection_t * context);
+
+// gobals
 static const char default_hfp_ag_service_name[] = "Voice gateway";
 
 static uint16_t hfp_supported_features = HFP_DEFAULT_AG_SUPPORTED_FEATURES;
@@ -83,17 +99,8 @@ static int hfp_ag_response_and_hold_active = 0;
 static hfp_phone_number_t * subscriber_numbers = NULL;
 static int subscriber_numbers_count = 0;
 
-static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
-static void hfp_run_for_context(hfp_connection_t *context);
-static void hfp_ag_setup_audio_connection(hfp_connection_t * connection);
-static void hfp_ag_hf_start_ringing(hfp_connection_t * context);
+static btstack_packet_callback_registration_t hci_event_callback_registration;
 
-hfp_generic_status_indicator_t * get_hfp_generic_status_indicators();
-int get_hfp_generic_status_indicators_nr();
-void set_hfp_generic_status_indicators(hfp_generic_status_indicator_t * indicators, int indicator_nr);
-void set_hfp_ag_indicators(hfp_ag_indicator_t * indicators, int indicator_nr);
-int get_hfp_ag_indicators_nr(hfp_connection_t * context);
-hfp_ag_indicator_t * get_hfp_ag_indicators(hfp_connection_t * context);
 
 hfp_ag_indicator_t * get_hfp_ag_indicators(hfp_connection_t * context){
     // TODO: save only value, and value changed in the context?
@@ -144,6 +151,7 @@ void hfp_ag_register_packet_handler(hfp_callback_t callback){
         return;
     }
     hfp_callback = callback;
+    hfp_set_callback(callback); 
 }
 
 static int use_in_band_tone(){
@@ -596,7 +604,7 @@ static int codecs_exchange_state_machine(hfp_connection_t * context){
 static void hfp_init_link_settings(hfp_connection_t * context){
     // determine highest possible link setting
     context->link_setting = HFP_LINK_SETTINGS_D1;
-    if (hci_remote_eSCO_supported(context->con_handle)){
+    if (hci_remote_esco_supported(context->acl_handle)){
         context->link_setting = HFP_LINK_SETTINGS_S3;
         if ((context->remote_supported_features & (1<<HFP_HFSF_ESCO_S4))
         &&  (hfp_supported_features             & (1<<HFP_AGSF_ESCO_S4))){
@@ -794,7 +802,7 @@ static int hfp_ag_run_for_audio_connection(hfp_connection_t * context){
     if (context->establish_audio_connection){
         context->state = HFP_W4_SCO_CONNECTED;
         context->establish_audio_connection = 0;
-        hfp_setup_synchronous_connection(context->con_handle, context->link_setting);
+        hfp_setup_synchronous_connection(context->acl_handle, context->link_setting);
         return 1;
     }
     return 0;
@@ -817,7 +825,7 @@ static void hfp_timeout_handler(btstack_timer_source_t * timer){
     hfp_connection_t * context = hfp_ag_context_for_timer(timer);
     if (!context) return;
 
-    log_info("HFP start ring timeout, con handle 0x%02x", context->con_handle);
+    log_info("HFP start ring timeout, con handle 0x%02x", context->acl_handle);
     context->ag_ring = 1;
     context->ag_send_clip = hfp_gsm_clip_type() && context->clip_enabled;
 
@@ -835,7 +843,7 @@ static void hfp_timeout_start(hfp_connection_t * context){
 }
 
 static void hfp_timeout_stop(hfp_connection_t * context){
-    log_info("HFP stop ring timeout, con handle 0x%02x", context->con_handle);
+    log_info("HFP stop ring timeout, con handle 0x%02x", context->acl_handle);
     btstack_run_loop_remove_timer(&context->hfp_timeout);
 } 
 
@@ -1960,7 +1968,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             hfp_handle_rfcomm_data(packet_type, channel, packet, size);
             break;
         case HCI_EVENT_PACKET:
-            hfp_handle_hci_event(hfp_callback, packet_type, packet, size);
+            hfp_handle_hci_event(packet_type, packet, size);
             break;
         default:
             break;
@@ -1983,13 +1991,15 @@ void hfp_ag_init(uint16_t rfcomm_channel_nr, uint32_t supported_features,
         log_error("hfp_init: codecs_nr (%d) > HFP_MAX_NUM_CODECS (%d)", codecs_nr, HFP_MAX_NUM_CODECS);
         return;
     }
+
+    // register for HCI events
+    hci_event_callback_registration.callback = &packet_handler;
+    hci_add_event_handler(&hci_event_callback_registration);
+
     l2cap_init();
-    l2cap_register_packet_handler(packet_handler);
 
-    rfcomm_register_packet_handler(packet_handler);
-
-    hfp_init(rfcomm_channel_nr);
-        
+    rfcomm_register_service(packet_handler, rfcomm_channel_nr, 0xffff);  
+    
     hfp_supported_features = supported_features;
     hfp_codecs_nr = codecs_nr;
 

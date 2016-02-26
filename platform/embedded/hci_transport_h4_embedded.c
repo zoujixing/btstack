@@ -59,6 +59,10 @@
 #error HCI_OUTGOING_PRE_BUFFER_SIZE not defined. Please update hci.h
 #endif
 
+#ifdef HAVE_EHCILL
+#error "HCI Transport H4 DMA does not support eHCILL. Please use hci_transport_h4_ehcill_dma.c instead."
+#endif 
+
 typedef enum {
     H4_W4_PACKET_TYPE = 1,
     H4_W4_EVENT_HEADER,
@@ -179,10 +183,8 @@ static void h4_block_received(void){
                     break;
                 default:
                     log_error("h4_process: invalid packet type 0x%02x", hci_packet[0]);
-                    read_pos = 0;
-                    h4_state = H4_W4_PACKET_TYPE;
-                    bytes_to_read = 1;
-                    break;
+                    h4_init_sm();
+                    return;
             }
             break;
             
@@ -196,7 +198,13 @@ static void h4_block_received(void){
             break;
             
         case H4_W4_ACL_HEADER:
-            bytes_to_read = READ_BT_16( hci_packet, 3);
+            bytes_to_read = little_endian_read_16( hci_packet, 3);
+            // check ACL length
+            if (HCI_ACL_HEADER_SIZE + bytes_to_read >  HCI_PACKET_BUFFER_SIZE){
+                log_error("h4_process: invalid ACL payload len %u - only space for %u", bytes_to_read, HCI_PACKET_BUFFER_SIZE - HCI_ACL_HEADER_SIZE);
+                h4_init_sm();
+                return;              
+            }
             if (bytes_to_read == 0) {
                 h4_state = H4_PACKET_RECEIVED; 
                 break;
@@ -244,7 +252,7 @@ static int h4_process(struct btstack_data_source *ds) {
     if (tx_state == TX_DONE){
         // reset state
         tx_state = TX_IDLE;
-        uint8_t event[] = { DAEMON_EVENT_HCI_PACKET_SENT, 0 };
+        uint8_t event[] = { HCI_EVENT_TRANSPORT_PACKET_SENT, 0 };
         packet_handler(HCI_EVENT_PACKET, &event[0], sizeof(event));
     }
 

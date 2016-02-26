@@ -60,7 +60,7 @@
 #include "hci.h"
 #include "hci_dump.h"
 #include "btstack_memory.h"
-#include "classic/remote_device_db.h"
+#include "classic/btstack_link_key_db.h"
 #include "btstack_config.h"
 
 static void hw_setup(void){
@@ -105,9 +105,8 @@ static void btstack_setup(void){
     btstack_run_loop_init(btstack_run_loop_embedded_get_instance());
     
     // init HCI
-    const hci_transport_t * transport = hci_transport_h4_instance();
-    remote_device_db_t * remote_db = (remote_device_db_t *) &remote_device_db_memory;
-    hci_init(transport, &config, remote_db);
+    hci_init(hci_transport_h4_instance, &config);
+    hci_set_link_key_db(btstack_link_key_db_memory_instance());
     hci_set_chipset(btstack_chipset_cc256x_instance());
     
     // use eHCILL

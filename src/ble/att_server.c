@@ -48,16 +48,16 @@
 
 #include "btstack_config.h"
 
-#include "btstack_run_loop.h"
 #include "btstack_debug.h"
+#include "btstack_event.h"
 #include "btstack_memory.h"
+#include "btstack_run_loop.h"
 #include "hci.h"
 #include "hci_dump.h"
-
 #include "l2cap.h"
 
 #include "ble/sm.h"
-#include "ble/att.h"
+#include "ble/att_db.h"
 #include "att_dispatch.h"
 #include "gap.h"
 #include "ble/le_device_db.h"
@@ -91,7 +91,8 @@ static int       att_ir_lookup_active = 0;
 
 static int       att_handle_value_indication_handle = 0;    
 static btstack_timer_source_t att_handle_value_indication_timer;
-
+static btstack_packet_callback_registration_t hci_event_callback_registration;
+static btstack_packet_callback_registration_t sm_event_callback_registration;
 static btstack_packet_handler_t att_client_packet_handler = NULL;
 
 static void att_handle_value_indication_notify_client(uint8_t status, uint16_t client_handle, uint16_t attribute_handle){
@@ -100,27 +101,27 @@ static void att_handle_value_indication_notify_client(uint8_t status, uint16_t c
     
     uint8_t event[7];
     int pos = 0;
-    event[pos++] = ATT_HANDLE_VALUE_INDICATION_COMPLETE;
+    event[pos++] = ATT_EVENT_HANDLE_VALUE_INDICATION_COMPLETE;
     event[pos++] = sizeof(event) - 2;
     event[pos++] = status;
-    bt_store_16(event, pos, client_handle);
+    little_endian_store_16(event, pos, client_handle);
     pos += 2;
-    bt_store_16(event, pos, attribute_handle);
+    little_endian_store_16(event, pos, attribute_handle);
     pos += 2;
     (*att_client_packet_handler)(HCI_EVENT_PACKET, 0, &event[0], sizeof(event));
 }
 
-static void att_emit_mtu_event(uint16_t handle, uint16_t mtu){
+static void att_emit_mtu_event(hci_con_handle_t con_handle, uint16_t mtu){
 
     if (!att_client_packet_handler) return;
 
     uint8_t event[6];
     int pos = 0;
-    event[pos++] = ATT_MTU_EXCHANGE_COMPLETE;
+    event[pos++] = ATT_EVENT_MTU_EXCHANGE_COMPLETE;
     event[pos++] = sizeof(event) - 2;
-    bt_store_16(event, pos, handle);
+    little_endian_store_16(event, pos, con_handle);
     pos += 2;
-    bt_store_16(event, pos, mtu);
+    little_endian_store_16(event, pos, mtu);
     pos += 2;
     (*att_client_packet_handler)(HCI_EVENT_PACKET, 0, &event[0], sizeof(event));
 }
@@ -136,9 +137,9 @@ static void att_event_packet_handler (uint8_t packet_type, uint16_t channel, uin
     switch (packet_type) {
             
         case HCI_EVENT_PACKET:
-            switch (packet[0]) {
+            switch (hci_event_packet_get_type(packet)) {
                 
-                case DAEMON_EVENT_HCI_PACKET_SENT:
+                case L2CAP_EVENT_CAN_SEND_NOW:
                     att_run();
                     break;
                     
@@ -147,9 +148,9 @@ static void att_event_packet_handler (uint8_t packet_type, uint16_t channel, uin
                         case HCI_SUBEVENT_LE_CONNECTION_COMPLETE:
                         	// store connection info 
                         	att_client_addr_type = packet[7];
-                            bt_flip_addr(att_client_address, &packet[8]);
+                            reverse_bd_addr(&packet[8], att_client_address);
                             // reset connection properties
-                            att_connection.con_handle = READ_BT_16(packet, 4);
+                            att_connection.con_handle = little_endian_read_16(packet, 4);
                             att_connection.mtu = ATT_DEFAULT_MTU;
                             att_connection.max_mtu = l2cap_max_le_mtu();
                             if (att_connection.max_mtu > ATT_REQUEST_BUFFER_SIZE){
@@ -168,7 +169,7 @@ static void att_event_packet_handler (uint8_t packet_type, uint16_t channel, uin
                 case HCI_EVENT_ENCRYPTION_CHANGE: 
                 case HCI_EVENT_ENCRYPTION_KEY_REFRESH_COMPLETE: 
                 	// check handle
-                	if (att_connection.con_handle != READ_BT_16(packet, 3)) break;
+                	if (att_connection.con_handle != little_endian_read_16(packet, 3)) break;
                 	att_connection.encryption_key_size = sm_encryption_key_size(att_connection.con_handle);
                 	att_connection.authenticated = sm_authenticated(att_connection.con_handle);
                 	break;
@@ -182,38 +183,36 @@ static void att_event_packet_handler (uint8_t packet_type, uint16_t channel, uin
                     att_server_state = ATT_SERVER_IDLE;
                     break;
                     
-                case SM_IDENTITY_RESOLVING_STARTED:
-                    log_info("SM_IDENTITY_RESOLVING_STARTED");
+                case SM_EVENT_IDENTITY_RESOLVING_STARTED:
+                    log_info("SM_EVENT_IDENTITY_RESOLVING_STARTED");
                     att_ir_lookup_active = 1;
                     break;
-                case SM_IDENTITY_RESOLVING_SUCCEEDED:
+                case SM_EVENT_IDENTITY_RESOLVING_SUCCEEDED:
                     att_ir_lookup_active = 0;
-                    att_ir_le_device_db_index = READ_BT_16(packet, 11);
-                    log_info("SM_IDENTITY_RESOLVING_SUCCEEDED id %u", att_ir_le_device_db_index);
+                    att_ir_le_device_db_index = little_endian_read_16(packet, 11);
+                    log_info("SM_EVENT_IDENTITY_RESOLVING_SUCCEEDED id %u", att_ir_le_device_db_index);
                     att_run();
                     break;
-                case SM_IDENTITY_RESOLVING_FAILED:
-                    log_info("SM_IDENTITY_RESOLVING_FAILED");
+                case SM_EVENT_IDENTITY_RESOLVING_FAILED:
+                    log_info("SM_EVENT_IDENTITY_RESOLVING_FAILED");
                     att_ir_lookup_active = 0;
                     att_ir_le_device_db_index = -1;
                     att_run();
                     break;
-
-                case SM_AUTHORIZATION_RESULT: {
+                case SM_EVENT_AUTHORIZATION_RESULT: {
                     if (packet[4] != att_client_addr_type) break;
-                    bt_flip_addr(event_address, &packet[5]);
+                    reverse_bd_addr(&packet[5], event_address);
                     if (memcmp(event_address, att_client_address, 6) != 0) break;
                     att_connection.authorized = packet[11];
                     att_run();
                 	break;
                 }
-
                 default:
                     break;
             }
-    }
-    if (att_client_packet_handler){
-        att_client_packet_handler(packet_type, channel, packet, size);
+            break;
+        default:
+            break;
     }
 }
 
@@ -222,7 +221,7 @@ static void att_signed_write_handle_cmac_result(uint8_t hash[8]){
     if (att_server_state != ATT_SERVER_W4_SIGNED_WRITE_VALIDATION) return;
 
     uint8_t hash_flipped[8];
-    swap64(hash, hash_flipped);
+    reverse_64(hash, hash_flipped);
     if (memcmp(hash_flipped, &att_request_buffer[att_request_size-8], 8)){
         log_info("ATT Signed Write, invalid signature");
         att_server_state = ATT_SERVER_IDLE;
@@ -231,7 +230,7 @@ static void att_signed_write_handle_cmac_result(uint8_t hash[8]){
     log_info("ATT Signed Write, valid signature");
 
     // update sequence number
-    uint32_t counter_packet = READ_BT_32(att_request_buffer, att_request_size-12);
+    uint32_t counter_packet = little_endian_read_32(att_request_buffer, att_request_size-12);
     le_device_db_remote_counter_set(att_ir_le_device_db_index, counter_packet+1);
     att_server_state = ATT_SERVER_REQUEST_RECEIVED_AND_VALIDATED;
     att_run();
@@ -265,7 +264,7 @@ static void att_run(void){
                 }
 
                 // check counter
-                uint32_t counter_packet = READ_BT_32(att_request_buffer, att_request_size-12);
+                uint32_t counter_packet = little_endian_read_32(att_request_buffer, att_request_size-12);
                 uint32_t counter_db     = le_device_db_remote_counter_get(att_ir_le_device_db_index);
                 log_info("ATT Signed Write, DB counter %"PRIu32", packet counter %"PRIu32, counter_db, counter_packet);
                 if (counter_packet < counter_db){
@@ -279,15 +278,15 @@ static void att_run(void){
                 le_device_db_remote_csrk_get(att_ir_le_device_db_index, csrk);
                 att_server_state = ATT_SERVER_W4_SIGNED_WRITE_VALIDATION;
                 log_info("Orig Signature: ");
-                hexdump( &att_request_buffer[att_request_size-8], 8);
-                uint16_t attribute_handle = READ_BT_16(att_request_buffer, 1);
+                log_info_hexdump( &att_request_buffer[att_request_size-8], 8);
+                uint16_t attribute_handle = little_endian_read_16(att_request_buffer, 1);
                 sm_cmac_start(csrk, att_request_buffer[0], attribute_handle, att_request_size - 15, &att_request_buffer[3], counter_packet, att_signed_write_handle_cmac_result);
                 return;
             } 
             // NOTE: fall through for regular commands
 
         case ATT_SERVER_REQUEST_RECEIVED_AND_VALIDATED:
-            if (!l2cap_can_send_fixed_channel_packet_now(att_connection.con_handle)) return;
+            if (!att_dispatch_server_can_send_now(att_connection.con_handle)) return;
 
             l2cap_reserve_packet_buffer();
             uint8_t * att_response_buffer = l2cap_get_outgoing_buffer();
@@ -357,8 +356,15 @@ static void att_packet_handler(uint8_t packet_type, uint16_t handle, uint8_t *pa
 
 void att_server_init(uint8_t const * db, att_read_callback_t read_callback, att_write_callback_t write_callback){
 
-    sm_register_packet_handler(att_event_packet_handler);
+    // register for HCI Events
+    hci_event_callback_registration.callback = &att_event_packet_handler;
+    hci_add_event_handler(&hci_event_callback_registration);
 
+    // register for SM events
+    sm_event_callback_registration.callback = &att_event_packet_handler;
+    sm_add_event_handler(&sm_event_callback_registration);
+
+    // and L2CAP ATT Server PDUs
     att_dispatch_register_server(att_packet_handler);
 
     att_server_state = ATT_SERVER_IDLE;
@@ -374,31 +380,31 @@ void att_server_register_packet_handler(btstack_packet_handler_t handler){
 
 int  att_server_can_send_packet_now(void){
 	if (att_connection.con_handle == 0) return 0;
-	return l2cap_can_send_fixed_channel_packet_now(att_connection.con_handle);
+	return att_dispatch_server_can_send_now(att_connection.con_handle);
 }
 
-int att_server_notify(uint16_t handle, uint8_t *value, uint16_t value_len){
-    if (!l2cap_can_send_fixed_channel_packet_now(att_connection.con_handle)) return BTSTACK_ACL_BUFFERS_FULL;
+int att_server_notify(uint16_t attribute_handle, uint8_t *value, uint16_t value_len){
+    if (!att_dispatch_server_can_send_now(att_connection.con_handle)) return BTSTACK_ACL_BUFFERS_FULL;
 
     l2cap_reserve_packet_buffer();
     uint8_t * packet_buffer = l2cap_get_outgoing_buffer();
-    uint16_t size = att_prepare_handle_value_notification(&att_connection, handle, value, value_len, packet_buffer);
+    uint16_t size = att_prepare_handle_value_notification(&att_connection, attribute_handle, value, value_len, packet_buffer);
 	return l2cap_send_prepared_connectionless(att_connection.con_handle, L2CAP_CID_ATTRIBUTE_PROTOCOL, size);
 }
 
-int att_server_indicate(uint16_t handle, uint8_t *value, uint16_t value_len){
+int att_server_indicate(uint16_t attribute_handle, uint8_t *value, uint16_t value_len){
     if (att_handle_value_indication_handle) return ATT_HANDLE_VALUE_INDICATION_IN_PORGRESS;
-    if (!l2cap_can_send_fixed_channel_packet_now(att_connection.con_handle)) return BTSTACK_ACL_BUFFERS_FULL;
+    if (!att_dispatch_server_can_send_now(att_connection.con_handle)) return BTSTACK_ACL_BUFFERS_FULL;
 
     // track indication
-    att_handle_value_indication_handle = handle;
+    att_handle_value_indication_handle = attribute_handle;
     btstack_run_loop_set_timer_handler(&att_handle_value_indication_timer, att_handle_value_indication_timeout);
     btstack_run_loop_set_timer(&att_handle_value_indication_timer, ATT_TRANSACTION_TIMEOUT_MS);
     btstack_run_loop_add_timer(&att_handle_value_indication_timer);
 
     l2cap_reserve_packet_buffer();
     uint8_t * packet_buffer = l2cap_get_outgoing_buffer();
-    uint16_t size = att_prepare_handle_value_indication(&att_connection, handle, value, value_len, packet_buffer);
+    uint16_t size = att_prepare_handle_value_indication(&att_connection, attribute_handle, value, value_len, packet_buffer);
 	l2cap_send_prepared_connectionless(att_connection.con_handle, L2CAP_CID_ATTRIBUTE_PROTOCOL, size);
     return 0;
 }

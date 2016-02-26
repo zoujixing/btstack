@@ -55,10 +55,11 @@
 #include "hci.h"
 #include "gap.h"
 #include "btstack_memory.h"
+#include "btstack_event.h"
 #include "hci_dump.h"
 #include "l2cap.h"
 #include "classic/rfcomm.h"
-#include "classic/sdp.h"
+#include "classic/sdp_server.h"
 #include "classic/sdp_query_rfcomm.h"
 #include "ble/sm.h"
 #include "stdin_support.h"
@@ -99,6 +100,8 @@ static uint32_t  dummy_service_buffer[150/4];  // implicit alignment to 4-byte m
 static uint8_t   dummy_uuid128[] = { 1,1,1,1, 1,1,1,1,  1,1,1,1, 1,1,1,1, 1,1,1,1};
 static uint16_t  mtu;
 
+static btstack_packet_callback_registration_t hci_event_callback_registration;
+
 // GAP INQUIRY
 
 #define MAX_DEVICES 10
@@ -124,7 +127,7 @@ enum STATE state = INIT;
 static int getDeviceIndexForAddress( bd_addr_t addr){
     int j;
     for (j=0; j< deviceCount; j++){
-        if (BD_ADDR_CMP(addr, devices[j].address) == 0){
+        if (bd_addr_cmp(addr, devices[j].address) == 0){
             return j;
         }
     }
@@ -191,7 +194,7 @@ static void inquiry_packet_handler (uint8_t packet_type, uint8_t *packet, uint16
             numResponses = packet[2];
             int offset = 3;
             for (i=0; i<numResponses && deviceCount < MAX_DEVICES;i++){
-                bt_flip_addr(addr, &packet[offset]);
+                reverse_bd_addr(&packet[offset], addr);
                 offset += 6;
                 index = getDeviceIndexForAddress(addr);
                 if (index >= 0) continue;   // already in our list
@@ -202,16 +205,16 @@ static void inquiry_packet_handler (uint8_t packet_type, uint8_t *packet, uint16
 
                 if (event == HCI_EVENT_INQUIRY_RESULT){
                     offset += 2; // Reserved + Reserved
-                    devices[deviceCount].classOfDevice = READ_BT_24(packet, offset);
+                    devices[deviceCount].classOfDevice = little_endian_read_24(packet, offset);
                     offset += 3;
-                    devices[deviceCount].clockOffset =   READ_BT_16(packet, offset) & 0x7fff;
+                    devices[deviceCount].clockOffset =   little_endian_read_16(packet, offset) & 0x7fff;
                     offset += 2;
                     devices[deviceCount].rssi  = 0;
                 } else {
                     offset += 1; // Reserved
-                    devices[deviceCount].classOfDevice = READ_BT_24(packet, offset);
+                    devices[deviceCount].classOfDevice = little_endian_read_24(packet, offset);
                     offset += 3;
-                    devices[deviceCount].clockOffset =   READ_BT_16(packet, offset) & 0x7fff;
+                    devices[deviceCount].clockOffset =   little_endian_read_16(packet, offset) & 0x7fff;
                     offset += 2;
                     devices[deviceCount].rssi  = packet[offset];
                     offset += 1;
@@ -234,13 +237,13 @@ static void inquiry_packet_handler (uint8_t packet_type, uint8_t *packet, uint16
             continue_remote_names();
             break;
 
-        case BTSTACK_EVENT_REMOTE_NAME_CACHED:
-            bt_flip_addr(addr, &packet[3]);
+        case DAEMON_EVENT_REMOTE_NAME_CACHED:
+            reverse_bd_addr(&packet[3], addr);
             printf("Cached remote name for %s: '%s'\n", bd_addr_to_str(addr), &packet[9]);
             break;
 
         case HCI_EVENT_REMOTE_NAME_REQUEST_COMPLETE:
-            bt_flip_addr(addr, &packet[3]);
+            reverse_bd_addr(&packet[3], addr);
             index = getDeviceIndexForAddress(addr);
             if (index >= 0) {
                 if (packet[2] == 0) {
@@ -266,7 +269,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
     uint32_t passkey;
 
     if (packet_type == UCD_DATA_PACKET){
-        printf("UCD Data for PSM %04x received, size %u\n", READ_BT_16(packet, 0), size - 2);
+        printf("UCD Data for PSM %04x received, size %u\n", little_endian_read_16(packet, 0), size - 2);
     }
 
     if (packet_type != HCI_EVENT_PACKET) return;
@@ -287,33 +290,33 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
                 show_usage();
             }
             break;
-        case GAP_DEDICATED_BONDING_COMPLETED:
+        case GAP_EVENT_DEDICATED_BONDING_COMPLETED:
             printf("GAP Dedicated Bonding Complete, status %u\n", packet[2]);
             break;
 
         case HCI_EVENT_CONNECTION_COMPLETE:
             if (!packet[2]){
-                handle = READ_BT_16(packet, 3);
-                bt_flip_addr(remote, &packet[5]);
+                handle = little_endian_read_16(packet, 3);
+                reverse_bd_addr(&packet[5], remote);
                 printf("HCI_EVENT_CONNECTION_COMPLETE: handle 0x%04x\n", handle);
             }
             break;
 
         case HCI_EVENT_USER_PASSKEY_REQUEST:
-            bt_flip_addr(remote, &packet[2]);
+            reverse_bd_addr(&packet[2], remote);
             printf("GAP User Passkey Request for %s\nPasskey:", bd_addr_to_str(remote));
             fflush(stdout);
             ui_digits_for_passkey = 6;
             break;
 
         case HCI_EVENT_USER_CONFIRMATION_REQUEST:
-            bt_flip_addr(remote, &packet[2]);
-            passkey = READ_BT_32(packet, 8);
+            reverse_bd_addr(&packet[2], remote);
+            passkey = little_endian_read_32(packet, 8);
             printf("GAP User Confirmation Request for %s, number '%06u'\n", bd_addr_to_str(remote),passkey);
             break;
 
         case HCI_EVENT_PIN_CODE_REQUEST:
-            bt_flip_addr(remote, &packet[2]);
+            reverse_bd_addr(&packet[2], remote);
             printf("GAP Legacy PIN Request for %s (press ENTER to send)\nPasskey:", bd_addr_to_str(remote));
             fflush(stdout);
             ui_chars_for_pin = 1;
@@ -321,13 +324,13 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 
         case L2CAP_EVENT_CHANNEL_OPENED:
             // inform about new l2cap connection
-            bt_flip_addr(remote, &packet[3]);
-            psm = READ_BT_16(packet, 11); 
-            local_cid = READ_BT_16(packet, 13); 
-            handle = READ_BT_16(packet, 9);
+            reverse_bd_addr(&packet[3], remote);
+            psm = little_endian_read_16(packet, 11); 
+            local_cid = little_endian_read_16(packet, 13); 
+            handle = little_endian_read_16(packet, 9);
             if (packet[2] == 0) {
                 printf("L2CAP Channel successfully opened: %s, handle 0x%02x, psm 0x%02x, local cid 0x%02x, remote cid 0x%02x\n",
-                       bd_addr_to_str(remote), handle, psm, local_cid,  READ_BT_16(packet, 15));
+                       bd_addr_to_str(remote), handle, psm, local_cid,  little_endian_read_16(packet, 15));
             } else {
                 printf("L2CAP connection to device %s failed. status code %u\n", bd_addr_to_str(remote), packet[2]);
             }
@@ -335,8 +338,8 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 
         case L2CAP_EVENT_INCOMING_CONNECTION: {
             // data: event (8), len(8), address(48), handle (16), psm (16), local_cid(16), remote_cid (16) 
-            psm = READ_BT_16(packet, 10);
-            // uint16_t l2cap_cid  = READ_BT_16(packet, 12);
+            psm = little_endian_read_16(packet, 10);
+            // uint16_t l2cap_cid  = little_endian_read_16(packet, 12);
             printf("L2CAP incoming connection request on PSM %u\n", psm); 
             // l2cap_accept_connection(l2cap_cid);
             break;
@@ -344,9 +347,9 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 
         case RFCOMM_EVENT_INCOMING_CONNECTION:
             // data: event (8), len(8), address(48), channel (8), rfcomm_cid (16)
-            bt_flip_addr(remote, &packet[2]); 
+            reverse_bd_addr(&packet[2], remote); 
             rfcomm_channel_nr = packet[8];
-            rfcomm_channel_id = READ_BT_16(packet, 9);
+            rfcomm_channel_id = little_endian_read_16(packet, 9);
             printf("RFCOMM channel %u requested for %s\n\r", rfcomm_channel_nr, bd_addr_to_str(remote));
             rfcomm_accept_connection(rfcomm_channel_id);
             break;
@@ -356,8 +359,8 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
             if (packet[2]) {
                 printf("RFCOMM channel open failed, status %u\n\r", packet[2]);
             } else {
-                rfcomm_channel_id = READ_BT_16(packet, 12);
-                mtu = READ_BT_16(packet, 14);
+                rfcomm_channel_id = little_endian_read_16(packet, 12);
+                mtu = little_endian_read_16(packet, 14);
                 if (mtu > 60){
                     printf("BTstack libusb hack: using reduced MTU for sending instead of %u\n", mtu);
                     mtu = 60;
@@ -387,23 +390,21 @@ static void update_auth_req(void){
         gap_auth_req |= 4;  // General bonding
     }
     printf("Authentication Requirements: %u\n", gap_auth_req);
-    hci_ssp_set_authentication_requirement(gap_auth_req);
+    gap_ssp_set_authentication_requirement(gap_auth_req);
 }
 
-static void handle_found_service(char * name, uint8_t port){
+static void handle_found_service(const char * name, uint8_t port){
     printf("SDP: Service name: '%s', RFCOMM port %u\n", name, port);
     rfcomm_channel_nr = port;
 }
 
-static void handle_query_rfcomm_event(sdp_query_event_t * event, void * context){
-    sdp_query_rfcomm_service_event_t * ve;
-            
-    switch (event->type){
-        case SDP_QUERY_RFCOMM_SERVICE:
-            ve = (sdp_query_rfcomm_service_event_t*) event;
-            handle_found_service((char*) ve->service_name, ve->channel_nr);
+static void handle_query_rfcomm_event(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
+    switch (packet[0]){
+        case SDP_EVENT_QUERY_RFCOMM_SERVICE:
+            handle_found_service(sdp_event_query_rfcomm_service_get_name(packet),
+                                 sdp_event_query_rfcomm_service_get_rfcomm_channel(packet));
             break;
-        case SDP_QUERY_COMPLETE:
+        case SDP_EVENT_QUERY_COMPLETE:
             printf("SDP SPP Query complete\n");
             break;
         default: 
@@ -415,7 +416,7 @@ static void send_ucd_packet(void){
     l2cap_reserve_packet_buffer();
     int ucd_size = 50;
     uint8_t * ucd_buffer = l2cap_get_outgoing_buffer();
-    bt_store_16(ucd_buffer, 0, 0x2211);
+    little_endian_store_16(ucd_buffer, 0, 0x2211);
     int i; 
     for (i=2; i< ucd_size ; i++){
         ucd_buffer[i] = i;
@@ -503,22 +504,22 @@ static int  stdin_process(struct btstack_data_source *ds){
     switch (buffer){
         case 'c':
             gap_connectable = 0;
-            hci_connectable_control(0);
+            gap_connectable_control(0);
             show_usage();
             break;
         case 'C':
             gap_connectable = 1;
-            hci_connectable_control(1);
+            gap_connectable_control(1);
             show_usage();
             break;
         case 'd':
             gap_discoverable = 0;
-            hci_discoverable_control(0);
+            gap_discoverable_control(0);
             show_usage();
             break;
         case 'D':
             gap_discoverable = 1;
-            hci_discoverable_control(1);
+            gap_discoverable_control(1);
             show_usage();
             break;
         case 'b':
@@ -555,22 +556,22 @@ static int  stdin_process(struct btstack_data_source *ds){
 
         case 'e':
             gap_io_capabilities = "IO_CAPABILITY_DISPLAY_ONLY";
-            hci_ssp_set_io_capability(IO_CAPABILITY_DISPLAY_ONLY);
+            gap_ssp_set_io_capability(IO_CAPABILITY_DISPLAY_ONLY);
             show_usage();
             break;
         case 'f':
             gap_io_capabilities = "IO_CAPABILITY_DISPLAY_YES_NO";
-            hci_ssp_set_io_capability(IO_CAPABILITY_DISPLAY_YES_NO);
+            gap_ssp_set_io_capability(IO_CAPABILITY_DISPLAY_YES_NO);
             show_usage();
             break;
         case 'g':
             gap_io_capabilities = "IO_CAPABILITY_NO_INPUT_NO_OUTPUT";
-            hci_ssp_set_io_capability(IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
+            gap_ssp_set_io_capability(IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
             show_usage();
             break;
         case 'h':
             gap_io_capabilities = "IO_CAPABILITY_KEYBOARD_ONLY";
-            hci_ssp_set_io_capability(IO_CAPABILITY_KEYBOARD_ONLY);
+            gap_ssp_set_io_capability(IO_CAPABILITY_KEYBOARD_ONLY);
             show_usage();
             break;
 
@@ -595,7 +596,7 @@ static int  stdin_process(struct btstack_data_source *ds){
 
         case 'k':
             printf("Start SDP query for SPP service\n");
-            sdp_query_rfcomm_channel_and_name_for_uuid(remote_rfcomm, 0x1101);
+            sdp_query_rfcomm_channel_and_name_for_uuid(&handle_query_rfcomm_event, remote_rfcomm, 0x1101);
             break;
 
         case 't':
@@ -633,7 +634,7 @@ static int  stdin_process(struct btstack_data_source *ds){
 
         case 'l':
             printf("Creating RFCOMM Channel to %s #%u\n", bd_addr_to_str(remote_rfcomm), rfcomm_channel_nr);
-            rfcomm_create_channel(remote_rfcomm, rfcomm_channel_nr, NULL);
+            rfcomm_create_channel(packet_handler, remote_rfcomm, rfcomm_channel_nr, NULL);
             break;
         case 'n':
             printf("Send RFCOMM Data\n");   // mtu < 60 
@@ -669,7 +670,7 @@ static int  stdin_process(struct btstack_data_source *ds){
 
         case '=':
             printf("Deleting Link Key for %s\n", bd_addr_to_str(remote));
-            hci_drop_link_key_for_bd_addr(remote);
+            gap_drop_link_key_for_bd_addr(remote);
             break;
 
         case 'U':
@@ -761,19 +762,21 @@ int btstack_main(int argc, const char * argv[]){
 
     hci_set_class_of_device(0x220404);
     hci_disable_l2cap_timeout_check();
-    hci_ssp_set_io_capability(IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
+    gap_ssp_set_io_capability(IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
     gap_io_capabilities =  "IO_CAPABILITY_NO_INPUT_NO_OUTPUT";
-    hci_ssp_set_authentication_requirement(0);
-    hci_ssp_set_auto_accept(0);
+    gap_ssp_set_authentication_requirement(0);
+    gap_ssp_set_auto_accept(0);
     update_auth_req();
 
+    // register for HCI events
+    hci_event_callback_registration.callback = &packet_handler;
+    hci_add_event_handler(&hci_event_callback_registration);
+
     l2cap_init();
-    l2cap_register_packet_handler(&packet_handler);
     l2cap_register_fixed_channel(&packet_handler, L2CAP_CID_CONNECTIONLESS_CHANNEL);
 
     rfcomm_init();
-    rfcomm_register_packet_handler(packet_handler);
-    rfcomm_register_service(RFCOMM_SERVER_CHANNEL, 150);  // reserved channel, mtu=100
+    rfcomm_register_service(packet_handler, RFCOMM_SERVER_CHANNEL, 150);  // reserved channel, mtu=100
 
     // init SDP, create record for SPP and register with SDP
     sdp_init();
@@ -787,11 +790,9 @@ int btstack_main(int argc, const char * argv[]){
     de_dump_data_element((uint8_t*)dummy_service_buffer);
     printf("Dummy service record size: %u\n\r", de_get_len((uint8_t*)dummy_service_buffer));
     sdp_register_service((uint8_t*)dummy_service_buffer);
-
-    sdp_query_rfcomm_register_callback(handle_query_rfcomm_event, NULL);
     
-    hci_discoverable_control(0);
-    hci_connectable_control(0);
+    gap_discoverable_control(0);
+    gap_connectable_control(0);
 
     // turn on!
     hci_power_control(HCI_POWER_ON);

@@ -157,7 +157,7 @@ static float addToHistory(int history[histSize], int value){
 
 		case HCI_EVENT_PACKET:
 			
-			switch (packet[0]){
+			switch (hci_event_packet_get_type(packet)){
 
 				case HCI_EVENT_COMMAND_COMPLETE:
 					if ( COMMAND_COMPLETE_EVENT(packet, hci_write_authentication_enable) ) {
@@ -168,7 +168,7 @@ static float addToHistory(int history[histSize], int value){
 
 				case HCI_EVENT_PIN_CODE_REQUEST:
 					bt_flip_addr(event_addr, &packet[2]);
-					if (BD_ADDR_CMP([device address], event_addr)) break;
+					if (bd_addr_cmp([device address], event_addr)) break;
                     
 					// inform about pin code request
 					NSLog(@"HCI_EVENT_PIN_CODE_REQUEST\n");
@@ -179,10 +179,10 @@ static float addToHistory(int history[histSize], int value){
 					if (packet[2] == 0) {
 						// inform about new l2cap connection
 						bt_flip_addr(event_addr, &packet[3]);
-						uint16_t psm = READ_BT_16(packet, 11); 
-						uint16_t source_cid = READ_BT_16(packet, 13); 
-                        uint16_t dest_cid   = READ_BT_16(packet, 15);
-						wiiMoteConHandle = READ_BT_16(packet, 9);
+						uint16_t psm = little_endian_read_16(packet, 11); 
+						uint16_t source_cid = little_endian_read_16(packet, 13); 
+                        uint16_t dest_cid   = little_endian_read_16(packet, 15);
+						wiiMoteConHandle = little_endian_read_16(packet, 9);
 						NSLog(@"Channel successfully opened: handle 0x%02x, psm 0x%02x, source cid 0x%02x, dest cid 0x%02x",
 							  wiiMoteConHandle, psm, source_cid, dest_cid);
 						if (psm == PSM_HID_CONTROL) {

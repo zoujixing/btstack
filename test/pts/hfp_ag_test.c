@@ -61,7 +61,7 @@
 #include "hci.h"
 #include "l2cap.h"
 #include "classic/rfcomm.h"
-#include "classic/sdp.h"
+#include "classic/sdp_server.h"
 #include "btstack_debug.h"
 #include "classic/hfp_ag.h"
 #include "stdin_support.h"
@@ -129,7 +129,7 @@ enum STATE state = INIT;
 static int getDeviceIndexForAddress( bd_addr_t addr){
     int j;
     for (j=0; j< deviceCount; j++){
-        if (BD_ADDR_CMP(addr, devices[j].address) == 0){
+        if (bd_addr_cmp(addr, devices[j].address) == 0){
             return j;
         }
     }
@@ -197,7 +197,7 @@ static void inquiry_packet_handler (uint8_t packet_type, uint8_t *packet, uint16
             numResponses = packet[2];
             int offset = 3;
             for (i=0; i<numResponses && deviceCount < MAX_DEVICES;i++){
-                bt_flip_addr(addr, &packet[offset]);
+                reverse_bd_addr(&packet[offset], addr);
                 offset += 6;
                 index = getDeviceIndexForAddress(addr);
                 if (index >= 0) continue;   // already in our list
@@ -208,16 +208,16 @@ static void inquiry_packet_handler (uint8_t packet_type, uint8_t *packet, uint16
 
                 if (event == HCI_EVENT_INQUIRY_RESULT){
                     offset += 2; // Reserved + Reserved
-                    devices[deviceCount].classOfDevice = READ_BT_24(packet, offset);
+                    devices[deviceCount].classOfDevice = little_endian_read_24(packet, offset);
                     offset += 3;
-                    devices[deviceCount].clockOffset =   READ_BT_16(packet, offset) & 0x7fff;
+                    devices[deviceCount].clockOffset =   little_endian_read_16(packet, offset) & 0x7fff;
                     offset += 2;
                     devices[deviceCount].rssi  = 0;
                 } else {
                     offset += 1; // Reserved
-                    devices[deviceCount].classOfDevice = READ_BT_24(packet, offset);
+                    devices[deviceCount].classOfDevice = little_endian_read_24(packet, offset);
                     offset += 3;
-                    devices[deviceCount].clockOffset =   READ_BT_16(packet, offset) & 0x7fff;
+                    devices[deviceCount].clockOffset =   little_endian_read_16(packet, offset) & 0x7fff;
                     offset += 2;
                     devices[deviceCount].rssi  = packet[offset];
                     offset += 1;
@@ -241,13 +241,13 @@ static void inquiry_packet_handler (uint8_t packet_type, uint8_t *packet, uint16
             continue_remote_names();
             break;
 
-        case BTSTACK_EVENT_REMOTE_NAME_CACHED:
-            bt_flip_addr(addr, &packet[3]);
+        case DAEMON_EVENT_REMOTE_NAME_CACHED:
+            reverse_bd_addr(&packet[3], addr);
             printf("Cached remote name for %s: '%s'\n", bd_addr_to_str(addr), &packet[9]);
             break;
 
         case HCI_EVENT_REMOTE_NAME_REQUEST_COMPLETE:
-            bt_flip_addr(addr, &packet[3]);
+            reverse_bd_addr(&packet[3], addr);
             index = getDeviceIndexForAddress(addr);
             if (index >= 0) {
                 if (packet[2] == 0) {
@@ -571,14 +571,14 @@ static int stdin_process(struct btstack_data_source *ds){
 static void packet_handler(uint8_t * event, uint16_t event_size){
 
     if (event[0] == RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE){
-        handle = READ_BT_16(event, 9);
+        handle = little_endian_read_16(event, 9);
         printf("RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE received for handle 0x%04x\n", handle);
         return;
     }
 
     switch (event[0]){
         case RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE:
-            handle = READ_BT_16(event, 9);
+            handle = little_endian_read_16(event, 9);
             printf("RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE received for handle 0x%04x\n", handle);
             return;
 

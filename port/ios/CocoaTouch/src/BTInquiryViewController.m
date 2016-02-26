@@ -127,7 +127,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 			
 		case HCI_EVENT_PACKET:
 			
-			switch (packet[0]){
+			switch (hci_event_packet_get_type(packet)){
 					
 				case BTSTACK_EVENT_STATE:
 					// bt stack activated
@@ -172,26 +172,25 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 						[dev setAddress:addr];
 						[dev setPageScanRepetitionMode:packet[offset]];
 						offset += 1;
-                        switch (packet[0]) {
+                        switch (hci_event_packet_get_type(packet)) {
                             case HCI_EVENT_INQUIRY_RESULT:
                             	offset += 2; // Reserved + Reserved
-                                [dev setClassOfDevice:READ_BT_24(packet, 3 + numResponses*(6+1+1+1)   + i*3)];
+                                [dev setClassOfDevice:little_endian_read_24(packet, 3 + numResponses*(6+1+1+1)   + i*3)];
                                 offset += 3;
-                                [dev setClockOffset:( READ_BT_16(packet, 3 + numResponses*(6+1+1+1+3) + i*2) & 0x7fff)];
+                                [dev setClockOffset:( little_endian_read_16(packet, 3 + numResponses*(6+1+1+1+3) + i*2) & 0x7fff)];
                                 offset += 2;
                                 break;
                             case HCI_EVENT_INQUIRY_RESULT_WITH_RSSI:
                             	offset += 1; // Reserved
-                                [dev setClassOfDevice:READ_BT_24(packet, 3 + numResponses*(6+1+1)   + i*3)];
+                                [dev setClassOfDevice:little_endian_read_24(packet, 3 + numResponses*(6+1+1)   + i*3)];
                                 offset += 3;
-                                [dev setClockOffset:( READ_BT_16(packet, 3 + numResponses*(6+1+1+3) + i*2) & 0x7fff)];
+                                [dev setClockOffset:( little_endian_read_16(packet, 3 + numResponses*(6+1+1+3) + i*2) & 0x7fff)];
                                 offset += 3; // setClockOffset(2) + RSSI(1)
                                 break;
                             default:
                                 break;
                         }
-						// hexdump(packet, size);
-						
+                        
 						// get name from deviceInfo
 						if (deviceInfo) {
 							NSMutableDictionary * deviceDict = [deviceInfo objectForKey:[dev addressString]];
@@ -338,7 +337,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 	uint8_t j;
 	for (j=0; j<[devices count]; j++){
 		BTDevice *dev = [devices objectAtIndex:j];
-		if (BD_ADDR_CMP(addr, [dev address]) == 0){
+		if (bd_addr_cmp(addr, [dev address]) == 0){
 			return dev;
 		}
 	}

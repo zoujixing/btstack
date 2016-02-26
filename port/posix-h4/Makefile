@@ -4,9 +4,9 @@ BTSTACK_ROOT = ../..
 CORE += main.c stdin_support.c
 
 COMMON += \
-	hci_transport_h4_posix.c  \
+	hci_transport_h4_posix.c \
 	btstack_run_loop_posix.c \
-	remote_device_db_fs.c \
+	btstack_link_key_db_fs.c \
 
 CORE += \
 	bluetooth_init_cc2564B_1.2_BT_Spec_4.1.c \
@@ -20,7 +20,7 @@ CORE += \
 # TI-WL183x requires TIInit_11.8.32.c
 
 # examples
-include ${BTSTACK_ROOT}/example/embedded/Makefile.inc
+include ${BTSTACK_ROOT}/example/Makefile.inc
 
 # fetch and convert TI init scripts
 include ${BTSTACK_ROOT}/chipset/cc256x/Makefile.inc
@@ -54,4 +54,4 @@ ifneq ($(OS),Windows_NT)
 EXAMPLES += ${EXAMPLES_CLI}
 endif
 
-all: ${BTSTACK_ROOT}/src/btstack_version.h ${EXAMPLES}
+all: ${EXAMPLES}

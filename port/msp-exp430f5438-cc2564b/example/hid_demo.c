@@ -86,6 +86,8 @@ typedef enum {
 
 static state_t state = 0;
 
+static btstack_packet_callback_registration_t hci_event_callback_registration;
+
 #define KEYCODE_RETURN     '\n'
 #define KEYCODE_ESCAPE      27
 #define KEYCODE_TAB			'\t'
@@ -227,7 +229,7 @@ unsigned char hid_process_packet(unsigned char *hid_report, uint16_t *buffer, ui
 
 static void l2cap_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
 	
-	if (packet_type == HCI_EVENT_PACKET && packet[0] == L2CAP_EVENT_CHANNEL_OPENED){
+	if (packet_type == HCI_EVENT_PACKET && hci_event_packet_get_type(packet) == L2CAP_EVENT_CHANNEL_OPENED){
         if (packet[2]) {
             printf("Connection failed\n\r");
             return;
@@ -275,7 +277,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 	int i,j;
 	switch (packet_type) {
 		case HCI_EVENT_PACKET:
-			switch (packet[0]) {
+			switch (hci_event_packet_get_type(packet)) {
 					
 				case BTSTACK_EVENT_STATE:
 					// bt stack activated, get started - set local name
@@ -296,7 +298,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 					if ((packet[12] & 0x40) != 0x40 || packet[13] != 0x25) break;
 
 					// flip addr
-					bt_flip_addr(keyboard, &packet[3]);
+					reverse_bd_addr(&packet[3], keyboard);
 					
 					// show
 					printf("Keyboard:\n\r");
@@ -376,16 +378,20 @@ int main(void){
 
     // init HCI
 	const hci_transport_t * transport = hci_transport_h4_instance();
-    remote_device_db_t * remote_db = (remote_device_db_t *) &remote_device_db_memory;
-	hci_init(transport, &config, remote_db);
+    remote_device_db_t * link_key_db = (remote_device_db_t *) &remote_device_db_memory;
+	hci_init(transport, &config, link_key_db);
+	hci_set_link_key_db(link_key_db);
 	hci_set_chipset(btstack_chipset_cc256x_instance());
 
     // use eHCILL
     btstack_chipset_cc256x_enable_ehcill(1);
 
+    // register for HCI events
+    hci_event_callback_registration.callback = &packet_handler;
+    hci_add_event_handler(&hci_event_callback_registration);
+
     // init L2CAP
     l2cap_init();
-    l2cap_register_packet_handler(packet_handler);
 		
     // ready - enable irq used in h4 task
     __enable_interrupt();   

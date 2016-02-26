@@ -65,9 +65,10 @@
 #include "hci.h"
 #include "l2cap.h"
 #include "btstack_memory.h"
-#include "classic/remote_device_db.h"
+#include "btstack_event.h"
+#include "classic/btstack_link_key_db.h"
 #include "classic/rfcomm.h"
-#include "classic/sdp.h"
+#include "classic/sdp_server.h"
 #include "btstack_config.h"
 
 #define HEARTBEAT_PERIOD_MS 1000
@@ -76,6 +77,7 @@ static uint8_t   rfcomm_channel_nr = 1;
 static uint16_t  rfcomm_channel_id = 0;
 static uint8_t   spp_service_buffer[100];
 
+static btstack_packet_callback_registration_t hci_event_callback_registration;
 
 // Bluetooth logic
 static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
@@ -89,7 +91,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 
 	switch (packet_type) {
 		case HCI_EVENT_PACKET:
-			switch (packet[0]) {
+			switch (hci_event_packet_get_type(packet)) {
 					
 				case BTSTACK_EVENT_STATE:
 					if (packet[2] == HCI_STATE_WORKING) {
@@ -101,7 +103,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 				
 				case HCI_EVENT_COMMAND_COMPLETE:
 					if (COMMAND_COMPLETE_EVENT(packet, hci_read_bd_addr)){
-                        bt_flip_addr(event_addr, &packet[6]);
+                        reverse_bd_addr(&packet[6], event_addr);
                         printf("BD-ADDR: %s\n\r", bd_addr_to_str(event_addr));
                         break;
                     }
@@ -110,22 +112,23 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 				case HCI_EVENT_LINK_KEY_REQUEST:
 					// deny link key request
                     printf("Link key request\n\r");
-                    bt_flip_addr(event_addr, &packet[2]);
+                    reverse_bd_addr(&packet[2], event_addr);
 					hci_send_cmd(&hci_link_key_request_negative_reply, &event_addr);
 					break;
 					
 				case HCI_EVENT_PIN_CODE_REQUEST:
 					// inform about pin code request
                     printf("Pin code request - using '0000'\n\r");
-                    bt_flip_addr(event_addr, &packet[2]);
+                    reverse_bd_addr(&packet[2], event_addr);
 					hci_send_cmd(&hci_pin_code_request_reply, &event_addr, 4, "0000");
 					break;
                 
                 case RFCOMM_EVENT_INCOMING_CONNECTION:
 					// data: event (8), len(8), address(48), channel (8), rfcomm_cid (16)
-					bt_flip_addr(event_addr, &packet[2]); 
+					reverse_bd_addr(&packet[2],
+							event_addr); 
 					rfcomm_channel_nr = packet[8];
-					rfcomm_channel_id = READ_BT_16(packet, 9);
+					rfcomm_channel_id = little_endian_read_16(packet, 9);
 					printf("RFCOMM channel %u requested for %s\n\r", rfcomm_channel_nr, bd_addr_to_str(event_addr));
                     rfcomm_accept_connection(rfcomm_channel_id);
 					break;
@@ -135,8 +138,8 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 					if (packet[2]) {
 						printf("RFCOMM channel open failed, status %u\n\r", packet[2]);
 					} else {
-						rfcomm_channel_id = READ_BT_16(packet, 12);
-						mtu = READ_BT_16(packet, 14);
+						rfcomm_channel_id = little_endian_read_16(packet, 12);
+						mtu = little_endian_read_16(packet, 14);
 						printf("\n\rRFCOMM channel open succeeded. New RFCOMM Channel ID %u, max frame size %u\n\r", rfcomm_channel_id, mtu);
 					}
 					break;
@@ -215,14 +218,16 @@ static void  heartbeat_handler(struct btstack_timer_source *ts){
 int btstack_main(int argc, const char * argv[]);
 int btstack_main(int argc, const char * argv[]){
 
+    // register for HCI events
+    hci_event_callback_registration.callback = &packet_handler;
+    hci_add_event_handler(&hci_event_callback_registration);
+
     // init L2CAP
     l2cap_init();
-    l2cap_register_packet_handler(packet_handler);
     
     // init RFCOMM
     rfcomm_init();
-    rfcomm_register_packet_handler(packet_handler);
-    rfcomm_register_service(rfcomm_channel_nr, 100);  // reserved channel, mtu=100
+    rfcomm_register_service(packet_handler, rfcomm_channel_nr, 100);  // reserved channel, mtu=100
 
     // init SDP, create record for SPP and register with SDP
     sdp_init();
@@ -240,7 +245,7 @@ int btstack_main(int argc, const char * argv[]){
     // set local name
     gap_set_local_name("BlueMSP-Demo");
     // make discoverable
-    hci_discoverable_control(1);
+    gap_discoverable_control(1);
 
 	printf("Run...\n\r");
  	// turn on!

@@ -43,17 +43,24 @@
 #ifndef __BTSTACK_DEFINES_H
 #define __BTSTACK_DEFINES_H
 
+#include <stdint.h>
+#include "btstack_linked_list.h" 
+
+// TYPES
+
+// packet handler
+typedef void (*btstack_packet_handler_t) (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
+
+// packet callback supporting multiple registrations
+typedef struct {
+    btstack_linked_item_t    item;
+    btstack_packet_handler_t callback;
+} btstack_packet_callback_registration_t;
+
 /**
- * Address types
- * @note: BTstack uses a custom addr type to refer to classic ACL and SCO devices
+ * @brief 128 bit key used with AES128 in Security Manager
  */
- typedef enum {
-    BD_ADDR_TYPE_LE_PUBLIC = 0,
-    BD_ADDR_TYPE_LE_RANDOM = 1,
-    BD_ADDR_TYPE_SCO       = 0xfe,
-    BD_ADDR_TYPE_CLASSIC   = 0xff,
-    BD_ADDR_TYPE_UNKNOWN   = 0xfe
- } bd_addr_type_t;
+typedef uint8_t sm_key_t[16];
 
 // DEFINES
 
@@ -122,7 +129,8 @@
 #define SDP_QUERY_INCOMPLETE                               0x81
 #define SDP_SERVICE_NOT_FOUND                              0x82
 #define SDP_HANDLE_INVALID                                 0x83
- 
+#define SDP_QUERY_BUSY                                     0x84
+
 #define ATT_HANDLE_VALUE_INDICATION_IN_PORGRESS            0x90 
 #define ATT_HANDLE_VALUE_INDICATION_TIMEOUT                0x91
 
@@ -261,66 +269,134 @@
 #define BTSTACK_EVENT_POWERON_FAILED                       0x62
 
 /**
+ * @format 1
+ * @param discoverable
+ */
+#define BTSTACK_EVENT_DISCOVERABLE_ENABLED                 0x66
+
+// Daemon Events
+
+/**
  * @format 112
  * @param major
  * @param minor
  @ @param revision
  */
-#define BTSTACK_EVENT_VERSION                              0x63
+#define DAEMON_EVENT_VERSION                               0x63
 
 // data: system bluetooth on/off (bool)
-#define BTSTACK_EVENT_SYSTEM_BLUETOOTH_ENABLED             0x64
+/**
+ * @format 1
+ * param system_bluetooth_enabled
+ */
+#define DAEMON_EVENT_SYSTEM_BLUETOOTH_ENABLED              0x64
 
 // data: event (8), len(8), status (8) == 0, address (48), name (1984 bits = 248 bytes)
-#define BTSTACK_EVENT_REMOTE_NAME_CACHED                   0x65
 
-// data: discoverable enabled (bool)
-#define BTSTACK_EVENT_DISCOVERABLE_ENABLED                 0x66
+/* 
+ * @format 1BT
+ * @param status == 0 to match read_remote_name_request
+ * @param address
+ * @param name
+ */
+#define DAEMON_EVENT_REMOTE_NAME_CACHED                    0x65
 
-// Daemon Events used internally
-
-// data: event(8)
-#define DAEMON_EVENT_CONNECTION_OPENED                     0x68
-
-// data: event(8)
-#define DAEMON_EVENT_CONNECTION_CLOSED                     0x69
-
-// data: event(8), nr_connections(8)
-#define DAEMON_NR_CONNECTIONS_CHANGED                      0x6A
+// internal daemon events
 
 // data: event(8)
-#define DAEMON_EVENT_NEW_RFCOMM_CREDITS                    0x6B
+#define DAEMON_EVENT_CONNECTION_OPENED                     0x67
 
 // data: event(8)
-#define DAEMON_EVENT_HCI_PACKET_SENT                       0x6C
+#define DAEMON_EVENT_CONNECTION_CLOSED                     0x68
+
+
+// additional HCI events
+
+/**
+ * @brief Outgoing packet 
+ */
+#define HCI_EVENT_TRANSPORT_PACKET_SENT                    0x6E
+
+/**
+ * @format B
+ * @param handle
+ */
+#define HCI_EVENT_SCO_CAN_SEND_NOW                         0x6F
 
 // L2CAP EVENTS
     
-// data: event (8), len(8), status (8), address(48), handle (16), psm (16), local_cid(16), remote_cid (16), local_mtu(16), remote_mtu(16), flush_timeout(16)
+/**
+ * @format 1BH222222
+ * @param status
+ * @param address
+ * @param handle
+ * @param psm
+ * @param local_cid
+ * @param remote_cid
+ * @param local_mtu
+ * @param remote_mtu
+ * @param flush_timeout
+ */
 #define L2CAP_EVENT_CHANNEL_OPENED                         0x70
 
-// data: event (8), len(8), channel (16)
+/*
+ * @format 2
+ * @param local_cid
+ */
 #define L2CAP_EVENT_CHANNEL_CLOSED                         0x71
 
-// data: event (8), len(8), address(48), handle (16), psm (16), local_cid(16), remote_cid (16) 
+/**
+ * @format 1BH222
+ * @param status
+ * @param address
+ * @param handle
+ * @param psm
+ * @param local_cid
+ * @param remote_cid
+ */
 #define L2CAP_EVENT_INCOMING_CONNECTION                    0x72
 
+// ??
 // data: event(8), len(8), handle(16)
 #define L2CAP_EVENT_TIMEOUT_CHECK                          0x73
 
+// ??
 // data: event(8), len(8), local_cid(16), credits(8)
 #define L2CAP_EVENT_CREDITS                                0x74
 
-// data: event(8), len(8), status (8), psm (16)
+/**
+ * @format 12
+ * @param status
+ * @param psm
+ */
 #define L2CAP_EVENT_SERVICE_REGISTERED                     0x75
 
-// data: event(8), len(8), handle(16), interval min(16), interval max(16), latency(16), timeout multiplier(16)
+/**
+ * @format H2222
+ * @param handle
+ * @param interval_min
+ * @param interval_max
+ * @param latencey
+ * @param timeout_multiplier
+ */
 #define L2CAP_EVENT_CONNECTION_PARAMETER_UPDATE_REQUEST    0x76
 
 // data: event(8), len(8), handle(16), result (16) (0 == ok, 1 == fail)
+ /** 
+  * @format H2
+  * @param handle
+  * @result
+  */
 #define L2CAP_EVENT_CONNECTION_PARAMETER_UPDATE_RESPONSE   0x77
 
+/**
+ * @format 2
+ * @param local_cid
+ */
+#define L2CAP_EVENT_CAN_SEND_NOW                           0x78
+
 // RFCOMM EVENTS
+
 /**
  * @format 1B2122
  * @param status
@@ -374,8 +450,6 @@
  */
 #define RFCOMM_EVENT_PERSISTENT_CHANNEL                    0x86
     
-// data: event (8), len(8), rfcomm_cid (16), modem status (8)
-
 /**
  * @format 21
  * @param rfcomm_cid
@@ -383,71 +457,88 @@
  */
 #define RFCOMM_EVENT_REMOTE_MODEM_STATUS                   0x87
 
-// data: event (8), len(8), rfcomm_cid (16), rpn_data_t (67)
  /**
-  * TODO: format for variable data
+  * TODO: format for variable data 2?
   * @param rfcomm_cid
   * @param rpn_data
   */
 #define RFCOMM_EVENT_PORT_CONFIGURATION                    0x88
 
-    
-// data: event(8), len(8), status(8), service_record_handle(32)
- /**
+/**
+ * @format 2
+ * @param local_cid
+ */
+#define RFCOMM_EVENT_CAN_SEND_NOW                          0x89
+
+
+/**
   * @format 14
   * @param status
   * @param service_record_handle
   */
-#define SDP_SERVICE_REGISTERED                             0x90
+#define SDP_EVENT_SERVICE_REGISTERED                             0x90
 
-// data: event(8), len(8), status(8)
 /**
  * @format 1
  * @param status
  */
-#define SDP_QUERY_COMPLETE                                 0x91 
+#define SDP_EVENT_QUERY_COMPLETE                                 0x91 
 
-// data: event(8), len(8), rfcomm channel(8), name(var)
 /**
  * @format 1T
  * @param rfcomm_channel
  * @param name
- * @brief SDP_QUERY_RFCOMM_SERVICE 0x92
  */
-#define SDP_QUERY_RFCOMM_SERVICE                           0x92
+#define SDP_EVENT_QUERY_RFCOMM_SERVICE                           0x92
 
-// data: event(8), len(8), record nr(16), attribute id(16), attribute value(var)
 /**
- * TODO: format for variable data
- * @param record_nr
+ * @format 22221
+ * @param record_id
  * @param attribute_id
+ * @param attribute_length
+ * @param data_offset
+ * @param data
+ */
+#define SDP_EVENT_QUERY_ATTRIBUTE_BYTE                           0x93
+
+/**
+ * @format 22LV
+ * @param record_id
+ * @param attribute_id
+ * @param attribute_length
  * @param attribute_value
  */
-#define SDP_QUERY_ATTRIBUTE_VALUE                          0x93
+#define SDP_EVENT_QUERY_ATTRIBUTE_VALUE                          0x94
 
-// not provided by daemon, only used for internal testing
-#define SDP_QUERY_SERVICE_RECORD_HANDLE                    0x94
+/**
+ * @format 224
+ * @param total_count
+ * @param record_index
+ * @param record_handle
+ * @note Not provided by daemon, only used for internal testing
+ */
+#define SDP_EVENT_QUERY_SERVICE_RECORD_HANDLE                    0x95
 
 /**
  * @format H1
  * @param handle
  * @param status
  */
-#define GATT_QUERY_COMPLETE                                0xA0
+#define GATT_EVENT_QUERY_COMPLETE                                0xA0
 
 /**
  * @format HX
  * @param handle
  * @param service
  */
-#define GATT_SERVICE_QUERY_RESULT                          0xA1
+#define GATT_EVENT_SERVICE_QUERY_RESULT                          0xA1
 
 /**
  * @format HY
  * @param handle
  * @param characteristic
  */
-#define GATT_CHARACTERISTIC_QUERY_RESULT                   0xA2
+#define GATT_EVENT_CHARACTERISTIC_QUERY_RESULT                   0xA2
 
 /**
  * @format H2X
@@ -455,14 +546,14 @@
  * @param include_handle
  * @param service
  */
-#define GATT_INCLUDED_SERVICE_QUERY_RESULT                 0xA3
+#define GATT_EVENT_INCLUDED_SERVICE_QUERY_RESULT                 0xA3
 
 /**
  * @format HZ
  * @param handle
  * @param characteristic_descriptor
  */
-#define GATT_ALL_CHARACTERISTIC_DESCRIPTORS_QUERY_RESULT   0xA4
+#define GATT_EVENT_ALL_CHARACTERISTIC_DESCRIPTORS_QUERY_RESULT   0xA4
 
 /**
  * @format H2LV
@@ -471,7 +562,7 @@
  * @param value_length
  * @param value
  */
-#define GATT_CHARACTERISTIC_VALUE_QUERY_RESULT             0xA5
+#define GATT_EVENT_CHARACTERISTIC_VALUE_QUERY_RESULT             0xA5
 
 /**
  * @format H22LV
@@ -481,7 +572,7 @@
  * @param value_length
  * @param value
  */
-#define GATT_LONG_CHARACTERISTIC_VALUE_QUERY_RESULT        0xA6
+#define GATT_EVENT_LONG_CHARACTERISTIC_VALUE_QUERY_RESULT        0xA6
 
 /**
  * @format H2LV
@@ -490,7 +581,7 @@
  * @param value_length
  * @param value
  */
-#define GATT_NOTIFICATION                                  0xA7
+#define GATT_EVENT_NOTIFICATION                                  0xA7
 
 /**
  * @format H2LV
@@ -499,7 +590,7 @@
  * @param value_length
  * @param value
  */
-#define GATT_INDICATION                                    0xA8
+#define GATT_EVENT_INDICATION                                    0xA8
 
 /**
  * @format H2LV
@@ -507,7 +598,7 @@
  * @param descriptor_length
  * @param descriptor
  */
-#define GATT_CHARACTERISTIC_DESCRIPTOR_QUERY_RESULT        0xA9
+#define GATT_EVENT_CHARACTERISTIC_DESCRIPTOR_QUERY_RESULT        0xA9
 
 /**
  * @format H2LV
@@ -516,24 +607,24 @@
  * @param descriptor_length
  * @param descriptor
  */
-#define GATT_LONG_CHARACTERISTIC_DESCRIPTOR_QUERY_RESULT   0xAA
+#define GATT_EVENT_LONG_CHARACTERISTIC_DESCRIPTOR_QUERY_RESULT   0xAA
 
 /** 
  * @format H2
  * @param handle
  * @param MTU
  */    
-#define GATT_MTU                                           0xAB
+#define GATT_EVENT_MTU                                           0xAB
 
 /** 
  * @format H2
  * @param handle
  * @param MTU
  */    
-#define ATT_MTU_EXCHANGE_COMPLETE                          0xB5
+#define ATT_EVENT_MTU_EXCHANGE_COMPLETE                          0xB5
 
 // data: event(8), len(8), status (8), hci_handle (16), attribute_handle (16)
-#define ATT_HANDLE_VALUE_INDICATION_COMPLETE               0xB6
+#define ATT_EVENT_HANDLE_VALUE_INDICATION_COMPLETE               0xB6
 
 
 // data: event(8), len(8), status (8), bnep service uuid (16) 
@@ -557,7 +648,7 @@
   * @param addr_type
   * @param address
   */
-#define SM_JUST_WORKS_REQUEST                              0xD0
+#define SM_EVENT_JUST_WORKS_REQUEST                              0xD0
 
  /**
   * @format H1B
@@ -565,7 +656,7 @@
   * @param addr_type
   * @param address
   */
-#define SM_JUST_WORKS_CANCEL                               0xD1 
+#define SM_EVENT_JUST_WORKS_CANCEL                               0xD1 
 
  /**
   * @format H1B4
@@ -574,7 +665,7 @@
   * @param address
   * @param passkey
   */
-#define SM_PASSKEY_DISPLAY_NUMBER                          0xD2
+#define SM_EVENT_PASSKEY_DISPLAY_NUMBER                          0xD2
 
  /**
   * @format H1B
@@ -582,7 +673,7 @@
   * @param addr_type
   * @param address
   */
-#define SM_PASSKEY_DISPLAY_CANCEL                          0xD3
+#define SM_EVENT_PASSKEY_DISPLAY_CANCEL                          0xD3
 
  /**
   * @format H1B421
@@ -590,7 +681,7 @@
   * @param addr_type
   * @param address
   */
-#define SM_PASSKEY_INPUT_NUMBER                            0xD4
+#define SM_EVENT_PASSKEY_INPUT_NUMBER                            0xD4
 
  /**
   * @format H1B
@@ -598,7 +689,7 @@
   * @param addr_type
   * @param address
   */
-#define SM_PASSKEY_INPUT_CANCEL                            0xD5
+#define SM_EVENT_PASSKEY_INPUT_CANCEL                            0xD5
 
  /**
   * @format H1B
@@ -606,7 +697,7 @@
   * @param addr_type
   * @param address
   */
-#define SM_IDENTITY_RESOLVING_STARTED                      0xD6
+#define SM_EVENT_IDENTITY_RESOLVING_STARTED                      0xD6
 
  /**
   * @format H1B
@@ -614,7 +705,7 @@
   * @param addr_type
   * @param address
   */
-#define SM_IDENTITY_RESOLVING_FAILED                       0xD7
+#define SM_EVENT_IDENTITY_RESOLVING_FAILED                       0xD7
 
  /**
   * @format H1B2
@@ -623,7 +714,7 @@
   * @param address
   * @param le_device_db_index
   */
-#define SM_IDENTITY_RESOLVING_SUCCEEDED                    0xD8
+#define SM_EVENT_IDENTITY_RESOLVING_SUCCEEDED                    0xD8
 
  /**
   * @format H1B
@@ -631,7 +722,7 @@
   * @param addr_type
   * @param address
   */
-#define SM_AUTHORIZATION_REQUEST                           0xD9
+#define SM_EVENT_AUTHORIZATION_REQUEST                           0xD9
 
  /**
   * @format H1B1
@@ -640,15 +731,15 @@
   * @param address
   * @param authorization_result
   */
-#define SM_AUTHORIZATION_RESULT                            0xDA
+#define SM_EVENT_AUTHORIZATION_RESULT                            0xDA
 
 // GAP
 
 // data: event(8), len(8), hci_handle (16), security_level (8)
-#define GAP_SECURITY_LEVEL                                 0xE0
+#define GAP_EVENT_SECURITY_LEVEL                                 0xE0
 
 // data: event(8), len(8), status (8), bd_addr(48)
-#define GAP_DEDICATED_BONDING_COMPLETED                    0xE1
+#define GAP_EVENT_DEDICATED_BONDING_COMPLETED                    0xE1
 
 /**
  * @format 11B1JV
@@ -659,20 +750,75 @@
  * @param data_length
  * @param data
  */
-#define GAP_LE_ADVERTISING_REPORT                          0xE2
+#define GAP_LE_EVENT_ADVERTISING_REPORT                          0xE2
 
+
+// Meta Events, see below for sub events
 #define HCI_EVENT_HSP_META                                 0xE8
-
-#define HSP_SUBEVENT_ERROR                                 0x01
-#define HSP_SUBEVENT_AUDIO_CONNECTION_COMPLETE             0x02
-#define HSP_SUBEVENT_AUDIO_DISCONNECTION_COMPLETE          0x03
-#define HSP_SUBEVENT_RING                                  0x04
-#define HSP_SUBEVENT_MICROPHONE_GAIN_CHANGED               0x05
-#define HSP_SUBEVENT_SPEAKER_GAIN_CHANGED                  0x06
-#define HSP_SUBEVENT_HS_COMMAND                            0x07
-#define HSP_SUBEVENT_AG_INDICATION                         0x08
-
 #define HCI_EVENT_HFP_META                                 0xE9
+#define HCI_EVENT_ANCS_META                                0xEA
+
+// Potential other meta groups
+ // #define HCI_EVENT_BNEP_META                                0xxx
+// #define HCI_EVENT_GAP_META                                 0xxx
+// #define HCI_EVENT_GATT_META                                0xxx
+// #define HCI_EVENT_PAN_META                                 0xxx
+// #define HCI_EVENT_SDP_META                                 0xxx
+// #define HCI_EVENT_SM_META                                  0xxx
+
+/**
+ * @format 11H
+ * @param subevent_code
+ * @param status 0 == OK
+ * @param handle
+ */
+#define HSP_SUBEVENT_AUDIO_CONNECTION_COMPLETE             0x01
+
+/**
+ * @format 11
+ * @param subevent_code
+ * @param status 0 == OK
+ */
+#define HSP_SUBEVENT_AUDIO_DISCONNECTION_COMPLETE          0x02
+
+/**
+ * @format 1
+ * @param subevent_code
+ */
+#define HSP_SUBEVENT_RING                                  0x03
+
+/**
+ * @format 11
+ * @param subevent_code
+ * @param gain Valid range: [0,15]
+ */
+#define HSP_SUBEVENT_MICROPHONE_GAIN_CHANGED               0x04
+
+/**
+ * @format 11
+ * @param subevent_code
+ * @param gain Valid range: [0,15]
+ */
+#define HSP_SUBEVENT_SPEAKER_GAIN_CHANGED                  0x05
+
+/**
+ * @format 1JV
+ * @param subevent_code
+ * @param value_length
+ * @param value
+ */
+#define HSP_SUBEVENT_HS_COMMAND                            0x06
+
+/**
+ * @format 1JV
+ * @param subevent_code
+ * @param value_length
+ * @param value
+ */
+#define HSP_SUBEVENT_AG_INDICATION                         0x07
+
+
+// HFP Subevents
 
 #define HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_ESTABLISHED  0x01
 #define HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_RELEASED     0x02
@@ -699,17 +845,28 @@
 #define HFP_SUBEVENT_MICROPHONE_VOLUME                     0x17
 
 // ANCS Client
-#define ANCS_CLIENT_CONNECTED                              0xF0
-#define ANCS_CLIENT_NOTIFICATION                           0xF1
-#define ANCS_CLIENT_DISCONNECTED                           0xF2
 
-// #define HCI_EVENT_HFP_META                                 0xxx
-// #define HCI_EVENT_GATT_META                                0xxx
-// #define HCI_EVENT_SDP_META                                 0xxx
-// #define HCI_EVENT_ANCS_META                                0xxx
-// #define HCI_EVENT_SM_META                                  0xxx
-// #define HCI_EVENT_GAP_META                                 0xxx
-// #define HCI_EVENT_BNEP_META                                0xxx
-// #define HCI_EVENT_PAN_META                                 0xxx
+/**
+ * @format 1H
+ * @param subevent_code
+ * @param handle
+ */ 
+#define ANCS_SUBEVENT_CLIENT_CONNECTED                              0xF0
+
+/**
+ * @format 1H2T
+ * @param subevent_code
+ * @param handle
+ * @param attribute_id
+ * @param text
+ */ 
+#define ANCS_SUBEVENT_CLIENT_NOTIFICATION                           0xF1
+
+/**
+ * @format 1H
+ * @param subevent_code
+ * @param handle
+ */ 
+#define ANCS_SUBEVENT_CLIENT_DISCONNECTED                           0xF2
 
 #endif

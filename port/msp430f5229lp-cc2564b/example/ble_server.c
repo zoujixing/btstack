@@ -72,7 +72,7 @@
 #include "l2cap.h"
 
 #include "ble/sm.h"
-#include "ble/att.h"
+#include "ble/att_db.h"
 #include "ble/att_server.h"
 #include "gap.h"
 #include "ble/le_device_db.h"
@@ -91,7 +91,7 @@ static void app_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *
     bd_addr_t addr;
     uint8_t adv_data[] = { 02, 01, 05,   03, 02, 0xf0, 0xff }; 
     
-    switch (packet[0]) {
+    switch (hci_event_packet_get_type(packet)) {
         case BTSTACK_EVENT_STATE:
             // bt stack activated, get started - set local name
             if (packet[2] == HCI_STATE_WORKING) {
@@ -115,7 +115,7 @@ static void app_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *
             
         case HCI_EVENT_COMMAND_COMPLETE:
             if (COMMAND_COMPLETE_EVENT(packet, hci_read_bd_addr)){
-                bt_flip_addr(addr, &packet[6]);
+                reverse_bd_addr(&packet[6], addr);
                 printf("BD ADDR: %s\n", bd_addr_to_str(addr));
                 break;
             }
@@ -178,7 +178,7 @@ static uint16_t get_bytes_to_copy(uint16_t value_len, uint16_t offset, uint16_t 
     return bytes_to_copy;
 }
 
-uint16_t att_read_callback(uint16_t con_handle, uint16_t att_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size){
+uint16_t att_read_callback(hci_con_handle_t con_handle, uint16_t att_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size){
     printf("READ Callback, handle %04x\n", att_handle);
     uint16_t value_len = get_read_att_value_len(att_handle);
     if (!buffer) return value_len;
@@ -198,7 +198,7 @@ uint16_t att_read_callback(uint16_t con_handle, uint16_t att_handle, uint16_t of
 }
 
 // write requests
-static int att_write_callback(uint16_t con_handle, uint16_t att_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size){
+static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size){
     printf("WRITE Callback, handle %04x\n", att_handle);
     
     uint16_t value_len = get_write_att_value_len(att_handle);

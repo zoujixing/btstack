@@ -5,11 +5,12 @@ BTSTACK_ROOT = ../..
 POSIX_ROOT= ${BTSTACK_ROOT}/platform/posix
 CPPUTEST_HOME = ${BTSTACK_ROOT}/test/cpputest
 
-include ${BTSTACK_ROOT}/example/embedded/Makefile.inc
+include ${BTSTACK_ROOT}/example/Makefile.inc
 
 COMMON = \
-	sdp.c			            \
+	sdp_server.c			            \
 	sdp_query_rfcomm.c		    \
+    btstack_link_key_db_memory.c \
     btstack_linked_list.c	    \
     btstack_memory.c            \
     btstack_memory_pool.c       \
@@ -21,25 +22,22 @@ COMMON = \
     hci_dump.c		            \
     l2cap.c			            \
     l2cap_signaling.c 			\
-    remote_device_db_memory.c   \
     rfcomm.c			        \
     sdp_client.c		        \
-    sdp_parser.c		        \
-    sdp_query_util.c		    \
     sdp_util.c	                \
 
 
 MOCK = \
 	mock.c 						\
 	test_sequences.c            \
+    btstack_link_key_db_memory.c \
     btstack_linked_list.c	    \
     btstack_memory.c            \
+    btstack_memory_pool.c       \
+    btstack_util.c			    \
     hci_cmd.c					\
     hci_dump.c     				\
-    btstack_memory_pool.c       \
-    remote_device_db_memory.c   \
     sdp_util.c	                \
-    btstack_util.c			    \
 	
 COMMON_OBJ  = $(COMMON:.c=.o) 
 MOCK_OBJ  = $(MOCK:.c=.o)
@@ -60,7 +58,7 @@ LDFLAGS += -lCppUTest -lCppUTestExt
 
 EXAMPLES = hfp_ag_parser_test hfp_ag_client_test hfp_hf_parser_test hfp_hf_client_test 
 
-all: ${BTSTACK_ROOT}/src/btstack_version.h ${EXAMPLES}
+all: ${EXAMPLES}
 
 clean:
 	rm -rf *.o $(EXAMPLES) $(CLIENT_EXAMPLES) *.dSYM

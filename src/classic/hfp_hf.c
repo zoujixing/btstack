@@ -56,7 +56,8 @@
 #include "hci_dump.h"
 #include "l2cap.h"
 #include "classic/sdp_query_rfcomm.h"
-#include "classic/sdp.h"
+#include "classic/sdp_server.h"
+#include "classic/sdp_util.h"
 #include "btstack_debug.h"
 #include "classic/hfp.h"
 #include "classic/hfp_hf.h"
@@ -83,6 +84,8 @@ static hfp_callheld_status_t hfp_callheld_status;
 
 static char phone_number[25]; 
 
+static btstack_packet_callback_registration_t hci_event_callback_registration;
+
 void hfp_hf_register_packet_handler(hfp_callback_t callback){
     hfp_callback = callback;
     if (callback == NULL){
@@ -90,6 +93,7 @@ void hfp_hf_register_packet_handler(hfp_callback_t callback){
         return;
     }
     hfp_callback = callback;
+    hfp_set_callback(callback); 
 }
 
 static int hfp_hf_supports_codec(uint8_t codec){
@@ -521,7 +525,7 @@ static int hfp_hf_run_for_audio_connection(hfp_connection_t * context){
     if (context->establish_audio_connection){
         context->state = HFP_W4_SCO_CONNECTED;
         context->establish_audio_connection = 0;
-        hfp_setup_synchronous_connection(context->con_handle, context->link_setting);
+        hfp_setup_synchronous_connection(context->acl_handle, context->link_setting);
         return 1;
     }
 
@@ -778,7 +782,7 @@ static void hfp_run_for_context(hfp_connection_t * context){
 static void hfp_init_link_settings(hfp_connection_t * context){
     // determine highest possible link setting
     context->link_setting = HFP_LINK_SETTINGS_D1;
-    if (hci_remote_eSCO_supported(context->con_handle)){
+    if (hci_remote_esco_supported(context->acl_handle)){
         context->link_setting = HFP_LINK_SETTINGS_S3;
         if ((hfp_supported_features             & (1<<HFP_HFSF_ESCO_S4))
         &&  (context->remote_supported_features & (1<<HFP_AGSF_ESCO_S4))){
@@ -1015,7 +1019,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             hfp_handle_rfcomm_event(packet_type, channel, packet, size);
             break;
         case HCI_EVENT_PACKET:
-            hfp_handle_hci_event(hfp_callback, packet_type, packet, size);
+            hfp_handle_hci_event(packet_type, packet, size);
         default:
             break;
     }
@@ -1048,11 +1052,14 @@ void hfp_hf_set_codecs(uint8_t * codecs, int codecs_nr){
 }
 
 void hfp_hf_init(uint16_t rfcomm_channel_nr, uint32_t supported_features, uint16_t * indicators, int indicators_nr, uint32_t indicators_status){
+
+    // register for HCI events
+    hci_event_callback_registration.callback = &packet_handler;
+    hci_add_event_handler(&hci_event_callback_registration);
+
     l2cap_init();
-    l2cap_register_packet_handler(packet_handler);
-    rfcomm_register_packet_handler(packet_handler);
-    hfp_init(rfcomm_channel_nr);
-    
+    rfcomm_register_service(packet_handler, rfcomm_channel_nr, 0xffff);  
+        
     hfp_supported_features = supported_features;
 
     hfp_indicators_nr = indicators_nr;

@@ -3,6 +3,7 @@
 #include "ble/att_server.h"
 #include "ble/gatt_client.h"
 #include "ancs_client.h"
+#include "btstack_event.h"
 #include "ble/sm.h"
 #include <SPI.h>
 
@@ -69,23 +70,25 @@ void loop(void){
  * the GATT Client needs to be used direclty.
  */
 
+
 /* LISTING_START(ANCSCallback): ANCS Callback */
-void ancs_callback(ancs_event_t * event){
+void ancs_callback(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
     const char * attribute_name;
-    switch (event->type){
-        case ANCS_CLIENT_CONNECTED:
+    if (hci_event_packet_get_type(packet) != HCI_EVENT_ANCS_META) return;
+    switch (hci_event_ancs_meta_get_subevent_code()]){
+        case ANCS_SUBEVENT_CLIENT_CONNECTED:
             Serial.println("ANCS Client: Connected");
             break;
-        case ANCS_CLIENT_DISCONNECTED:
+        case ANCS_SUBEVENT_CLIENT_DISCONNECTED:
             Serial.println("ANCS Client: Disconnected");
             break;
-        case ANCS_CLIENT_NOTIFICATION:
-            attribute_name = ancs_client_attribute_name_for_id(event->attribute_id);
+        case ANCS_SUBEVENT_CLIENT_NOTIFICATION:
+            attribute_name = ancs_client_attribute_name_for_id(ancs_subevent_client_notification_get_attribute_id(packet));
             if (!attribute_name) break;
             Serial.print("Notification: ");
             Serial.print(attribute_name);
             Serial.print(" - ");
-            Serial.println(event->text);
+            Serial.println(ancs_subevent_client_notification_get_text(packet));
             break;
         default:
             break;

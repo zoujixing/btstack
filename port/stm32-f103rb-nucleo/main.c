@@ -53,7 +53,7 @@
 #include "hci.h"
 #include "btstack_chipset_cc256x.h"
 #include "btstack_memory.h"
-#include "classic/remote_device_db.h"
+#include "classic/btstack_link_key_db.h"
 
 // STDOUT_FILENO and STDERR_FILENO are defined by <unistd.h> with GCC
 // (this is a hack for IAR)
@@ -424,9 +424,8 @@ int main(void)
     btstack_run_loop_init(btstack_run_loop_embedded_get_instance());
     
     // init HCI
-    const hci_transport_t * transport = hci_transport_h4_instance();
-    remote_device_db_t * remote_db = (remote_device_db_t *) &remote_device_db_memory;
-    hci_init(transport, (void*) &config, remote_db);
+    hci_init(hci_transport_h4_instance(), (void*) &config);
+    hci_set_link_key_db(btstack_link_key_db_memory_instance());
     hci_set_chipset(btstack_chipset_cc256x_instance());
 
     // enable eHCILL

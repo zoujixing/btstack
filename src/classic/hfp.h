@@ -42,8 +42,8 @@
 // *****************************************************************************
 
 
-#ifndef btstack_hfp_h
-#define btstack_hfp_h
+#ifndef __BTSTACK_HFP_H
+#define __BTSTACK_HFP_H
 
 #include "hci.h"
 #include "classic/sdp_query_rfcomm.h"
@@ -297,7 +297,7 @@ typedef enum {
 typedef enum {
     HFP_IDLE = 0, //0
     HFP_SDP_QUERY_RFCOMM_CHANNEL,
-    HFP_W4_SDP_QUERY_COMPLETE,
+    HFP_W4_SDP_EVENT_QUERY_COMPLETE,
     HFP_W4_RFCOMM_CONNECTED,
     
     HFP_EXCHANGE_SUPPORTED_FEATURES,
@@ -464,8 +464,8 @@ typedef struct hfp_connection {
     btstack_linked_item_t    item;
     
     bd_addr_t remote_addr;
-    uint16_t con_handle;
-    uint16_t sco_handle;
+    hci_con_handle_t acl_handle;
+    hci_con_handle_t sco_handle;
     uint16_t rfcomm_channel_nr;
     uint16_t rfcomm_cid;
     
@@ -616,8 +616,10 @@ int get_bit(uint16_t bitmap, int position);
 int store_bit(uint32_t bitmap, int position, uint8_t value);
 // UTILS_END
 
+void hfp_set_callback(hfp_callback_t callback);
+
 void hfp_create_sdp_record(uint8_t * service, uint32_t service_record_handle, uint16_t service_uuid, int rfcomm_channel_nr, const char * name);
-void hfp_handle_hci_event(hfp_callback_t callback, uint8_t packet_type, uint8_t *packet, uint16_t size);
+void hfp_handle_hci_event(uint8_t packet_type, uint8_t *packet, uint16_t size);
 void hfp_emit_event(hfp_callback_t callback, uint8_t event_subtype, uint8_t value);
 void hfp_emit_string_event(hfp_callback_t callback, uint8_t event_subtype, const char * value);
 
@@ -632,7 +634,6 @@ void set_hfp_generic_status_indicators(hfp_generic_status_indicator_t * indicato
 btstack_linked_list_t * hfp_get_connections(void);
 void hfp_parse(hfp_connection_t * context, uint8_t byte, int isHandsFree);
 
-void hfp_init(uint16_t rfcomm_channel_nr);
 void hfp_establish_service_level_connection(bd_addr_t bd_addr, uint16_t service_uuid);
 void hfp_release_service_level_connection(hfp_connection_t * connection);
 void hfp_reset_context_flags(hfp_connection_t * context);
@@ -648,4 +649,4 @@ const char * hfp_ag_feature(int index);
 }
 #endif
 
-#endif
+#endif // __BTSTACK_HFP_H

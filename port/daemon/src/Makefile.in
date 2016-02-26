@@ -5,7 +5,7 @@ prefix = @prefix@
 CC = @CC@
 LDFLAGS = @LDFLAGS@
 CFLAGS = @CFLAGS@ \
-    -I $(BTSTACK_ROOT)/platform/daemon \
+    -I $(BTSTACK_ROOT)/platform/daemon/src \
     -I $(BTSTACK_ROOT)/platform/posix \
     -I $(BTSTACK_ROOT)/src \
     -I..
@@ -14,7 +14,7 @@ BTSTACK_LIB_EXTENSION = @BTSTACK_LIB_EXTENSION@
 LIBUSB_CFLAGS = @LIBUSB_CFLAGS@
 LIBUSB_LDFLAGS = @LIBUSB_LDFLAGS@
 
-VPATH += ${BTSTACK_ROOT}/platform/daemon
+VPATH += ${BTSTACK_ROOT}/platform/daemon/src
 VPATH += ${BTSTACK_ROOT}/platform/posix
 VPATH += ${BTSTACK_ROOT}/platform/cocoa
 VPATH += ${BTSTACK_ROOT}/src
@@ -48,14 +48,12 @@ BTdaemon_SOURCES =      \
     btstack_memory_pool.c       \
     rfcomm.c            \
     bnep.c              \
-    sdp.c               \
+    sdp_server.c               \
     sdp_client.c        \
-    sdp_parser.c        \
     sdp_query_rfcomm.c  \
-    sdp_query_util.c    \
     att_dispatch.c      \
     gatt_client.c       \
-    att.c               \
+    att_db.c               \
     att_server.c        \
     sm.c                \
     le_device_db_memory.c \

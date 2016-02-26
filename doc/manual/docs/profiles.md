@@ -14,7 +14,7 @@ functionality is split between and . Please check both.
 
 A remote unconnected Bluetooth device must be set as “discoverable” in
 order to be seen by a device performing the inquiry scan. To become
-discoverable, an application can call *hci_discoverable_control* with
+discoverable, an application can call *gap_discoverable_control* with
 input parameter 1. If you want to provide a helpful name for your
 device, the application can set its local name by calling
 $gap_set_local_name$. To save energy, you may set the device as
@@ -26,7 +26,7 @@ undiscoverable again, once a connection is established. See Listing
     int main(void){
         ... 
         // make discoverable
-        hci_discoverable_control(1);
+        gap_discoverable_control(1);
         btstack_run_loop_execute(); 
         return 0;
     }
@@ -35,7 +35,7 @@ undiscoverable again, once a connection is established. See Listing
          switch(state){
               case W4_CHANNEL_COMPLETE:
                   // if connection is successful, make device undiscoverable
-                  hci_discoverable_control(0);
+                  gap_discoverable_control(0);
               ...
          }
      }
@@ -69,12 +69,12 @@ Extended Inquiry Result (EIR). A code snippet is shown in Listing
             bt_flip_addr(addr, &packet[3+i*6]);
             pageScanRepetitionMode = packet [3 + numResponses*6 + i];
             if (event == HCI_EVENT_INQUIRY_RESULT){
-                classOfDevice = READ_BT_24(packet, 3 + numResponses*(6+1+1+1) + i*3);
-                clockOffset =   READ_BT_16(packet, 3 + numResponses*(6+1+1+1+3) + i*2) & 0x7fff;
+                classOfDevice = little_endian_read_24(packet, 3 + numResponses*(6+1+1+1) + i*3);
+                clockOffset =   little_endian_read_16(packet, 3 + numResponses*(6+1+1+1+3) + i*2) & 0x7fff;
                 rssi  = 0;
             } else {
-                classOfDevice = READ_BT_24(packet, 3 + numResponses*(6+1+1)     + i*3);
-                clockOffset =   READ_BT_16(packet, 3 + numResponses*(6+1+1+3)   + i*2) & 0x7fff;
+                classOfDevice = little_endian_read_24(packet, 3 + numResponses*(6+1+1)     + i*3);
+                clockOffset =   little_endian_read_16(packet, 3 + numResponses*(6+1+1+3)   + i*2) & 0x7fff;
                 rssi  = packet [3 + numResponses*(6+1+1+3+2) + i*1];
             }
             printf("Device found: %s with COD: 0x%06x, pageScan %u, clock offset 0x%04x, rssi 0x%02x\n", bd_addr_to_str(addr), classOfDevice, pageScanRepetitionMode, clockOffset, rssi);
@@ -348,7 +348,7 @@ for the connection MTU with *gatt_client_get_mtu*.
 GATT queries cannot be interleaved. Therefore, you can check if you can
 perform a GATT query on a particular connection using
 *gatt_client_is_ready*. As a result to a GATT query, zero to many
-*le_event*s are returned before a *GATT_QUERY_COMPLETE* event
+*le_event*s are returned before a *GATT_EVENT_QUERY_COMPLETE* event
 completes the query.
 
 For more details on the available GATT queries, please consult 

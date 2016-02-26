@@ -50,11 +50,13 @@
 #include "hci.h"
 #include "btstack_debug.h"
  
-uint16_t  sco_handle = 0;
+static uint16_t  sco_handle = 0;
+
+static btstack_packet_callback_registration_t hci_event_callback_registration;
 
 static void try_send_sco(void){
     if (!sco_handle) return;
-    if (!hci_can_send_sco_packet_now(sco_handle)) {
+    if (!hci_can_send_sco_packet_now()) {
         printf("try_send_sco, cannot send now\n");
         return;
     }
@@ -62,7 +64,7 @@ static void try_send_sco(void){
     hci_reserve_packet_buffer();
     uint8_t * sco_packet = hci_get_outgoing_packet_buffer();
     // set handle + flags
-    bt_store_16(sco_packet, 0, sco_handle);
+    little_endian_store_16(sco_packet, 0, sco_handle);
     // set len
     sco_packet[2] = frames_per_packet;
     int i;
@@ -72,7 +74,7 @@ static void try_send_sco(void){
     hci_send_sco_packet_buffer(frames_per_packet+3);
 }
 
-static void packet_handler(uint8_t packet_type, uint8_t * packet, uint16_t event_size){
+static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * packet, uint16_t event_size){
     switch (packet[0]) {
         case BTSTACK_EVENT_STATE:
             if (packet[2] != HCI_STATE_WORKING) break;
@@ -81,7 +83,7 @@ static void packet_handler(uint8_t packet_type, uint8_t * packet, uint16_t event
             break;
         case HCI_EVENT_CONNECTION_COMPLETE:
             if (packet[11]) break;
-            sco_handle = READ_BT_16(packet, 3);
+            sco_handle = little_endian_read_16(packet, 3);
             printf("SCO handle 0x%04x\n", sco_handle);
             try_send_sco();
             break;
@@ -94,7 +96,8 @@ static void packet_handler(uint8_t packet_type, uint8_t * packet, uint16_t event
 int btstack_main(int argc, const char * argv[]);
 int btstack_main(int argc, const char * argv[]){
 
-    hci_register_packet_handler(&packet_handler);
+    hci_event_callback_registration.callback = &packet_handler;
+    hci_add_event_handler(&hci_event_callback_registration);
 
     // turn on!
     hci_power_control(HCI_POWER_ON);

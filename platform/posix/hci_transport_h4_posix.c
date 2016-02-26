@@ -56,6 +56,10 @@
 #include "hci.h"
 #include "hci_transport.h"
 
+#ifdef HAVE_EHCILL
+#error "HCI Transport H4 POSIX does not support eHCILL yet. Please remove HAVE_EHCILL from your btstack-config.h"
+#endif 
+
 // assert pre-buffer for packet type is available
 #if !defined(HCI_OUTGOING_PRE_BUFFER_SIZE) || (HCI_OUTGOING_PRE_BUFFER_SIZE == 0)
 #error HCI_OUTGOING_PRE_BUFFER_SIZE not defined. Please update hci.h
@@ -255,13 +259,16 @@ static void   h4_register_packet_handler(void (*handler)(uint8_t packet_type, ui
     packet_handler = handler;
 }
 
-static void   h4_deliver_packet(void){
-    if (read_pos < 3) return; // sanity check
-    packet_handler(hci_packet[0], &hci_packet[1], read_pos-1);
-    
+static void h4_reset_statemachine(void){
     h4_state = H4_W4_PACKET_TYPE;
     read_pos = 0;
     bytes_to_read = 1;
+}
+
+static void   h4_deliver_packet(void){
+    if (read_pos < 3) return; // sanity check
+    packet_handler(hci_packet[0], &hci_packet[1], read_pos-1);
+    h4_reset_statemachine();
 }
 
 static void h4_statemachine(void){
@@ -283,8 +290,7 @@ static void h4_statemachine(void){
                     break;
                 default:
                     log_error("h4_process: invalid packet type 0x%02x", hci_packet[0]);
-                    read_pos = 0;
-                    bytes_to_read = 1;
+                    h4_reset_statemachine();
                     break;
             }
             break;
@@ -295,7 +301,13 @@ static void h4_statemachine(void){
             break;
             
         case H4_W4_ACL_HEADER:
-            bytes_to_read = READ_BT_16( hci_packet, 3);
+            bytes_to_read = little_endian_read_16( hci_packet, 3);
+            // check ACL length
+            if (HCI_ACL_HEADER_SIZE + bytes_to_read >  HCI_PACKET_BUFFER_SIZE){
+                log_error("h4_process: invalid ACL payload len %u - only space for %u", bytes_to_read, HCI_PACKET_BUFFER_SIZE - HCI_ACL_HEADER_SIZE);
+                h4_reset_statemachine();
+                break;              
+            }
             h4_state = H4_W4_PAYLOAD;
             break;
             
