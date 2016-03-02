@@ -203,7 +203,7 @@ static int stdin_process(struct data_source *ds){
             break;
         case 'b':
             printf("Press user button\n");
-            hsp_hs_press_button();
+            hsp_hs_send_button_press();
             break;
         default:
             show_usage();
@@ -290,8 +290,8 @@ static void packet_handler(uint8_t * event, uint16_t event_size){
                     break;
                 case HSP_SUBEVENT_AG_INDICATION:
                     memset(hs_cmd_buffer, 0, sizeof(hs_cmd_buffer));
-                    int size = event_size <= sizeof(hs_cmd_buffer)? event_size : sizeof(hs_cmd_buffer); 
-                    memcpy(hs_cmd_buffer, &event[3], size - 1);
+                    int size = event[3] <= sizeof(hs_cmd_buffer)? event[3] : sizeof(hs_cmd_buffer); 
+                    memcpy(hs_cmd_buffer, &event[4], size - 1);
                     printf("Received custom indication: \"%s\". \nExit code or call hsp_hs_send_result.\n", hs_cmd_buffer);
                     break;
                 default:
@@ -317,7 +317,7 @@ int btstack_main(int argc, const char * argv[]){
     hci_register_sco_packet_handler(&sco_packet_handler);
 
     memset((uint8_t *)hsp_service_buffer, 0, sizeof(hsp_service_buffer));
-    hsp_hs_create_service((uint8_t *)hsp_service_buffer, rfcomm_channel_nr, hsp_hs_service_name, 0);
+    hsp_hs_create_sdp_record((uint8_t *)hsp_service_buffer, rfcomm_channel_nr, hsp_hs_service_name, 0);
 
     hsp_hs_init(rfcomm_channel_nr);
     hsp_hs_register_packet_handler(packet_handler);
