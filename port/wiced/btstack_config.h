@@ -8,15 +8,14 @@
 // Port related features
 #define HAVE_BZERO
 #define HAVE_EHCILL
-// #define HAVE_SCO
 #define HAVE_TIME_MS
 #define WICED_BT_UART_MANUAL_CTS_RTS
 
 // BTstack features that can be enabled
 #define ENABLE_BLE
 #define ENABLE_CLASSIC
-// #define ENABLE_LOG_INFO
-// #define ENABLE_LOG_ERROR
+#define ENABLE_LOG_INFO
+#define ENABLE_LOG_ERROR
 
 // BTstack configuration. buffers, sizes, ...
 #define HCI_ACL_PAYLOAD_SIZE 52
@@ -29,7 +28,7 @@
 #define MAX_NO_RFCOMM_MULTIPLEXERS MAX_SPP_CONNECTIONS
 #define MAX_NO_RFCOMM_SERVICES 1
 #define MAX_NO_RFCOMM_CHANNELS MAX_SPP_CONNECTIONS
-#define MAX_NO_DB_MEM_DEVICE_LINK_KEYS  2
+#define MAX_NO_BTSTACK_LINK_KEY_DB_MEMORYS 2
 #define MAX_NO_DB_MEM_DEVICE_NAMES 0
 #define MAX_NO_DB_MEM_SERVICES 1
 #define MAX_NO_BNEP_SERVICES 0

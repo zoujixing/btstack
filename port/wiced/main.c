@@ -36,7 +36,7 @@
  */
 
 #include "btstack.h"
-#include "btstack_control_bcm.h"
+#include "btstack_chipset_bcm.h"
 #include "btstack_run_loop_wiced.h"
 
 #include "generated_mac_address.txt"
@@ -51,7 +51,7 @@ static const char * wifi_mac_address = NVRAM_GENERATED_MAC_ADDRESS;
 static const hci_transport_config_uart_t hci_transport_config_uart = {
     HCI_TRANSPORT_CONFIG_UART,
     115200,
-    3000000,
+    0, // 3000000,
     1,
     NULL,
 };
@@ -92,7 +92,7 @@ void application_start(void){
     // hci_dump_open(NULL, HCI_DUMP_STDOUT);
 
     // init HCI
-    hci_init(hci_transport_h4_instance, (void*) &hci_transport_config_uart);
+    hci_init(hci_transport_h4_instance(), (void*) &hci_transport_config_uart);
     hci_set_link_key_db(btstack_link_key_db_memory_instance());
     hci_set_chipset(btstack_chipset_bcm_instance());
 
