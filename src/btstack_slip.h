@@ -35,50 +35,68 @@
  *
  */
 
-#include <string.h>
-#include <stdlib.h>
+/*
+ *  btstack_slip.h
+ *  SLIP encoder/decoder
+ */
 
-#include "rfcomm_service_db.h"
-#include "btstack_memory.h"
-#include "btstack_debug.h"
+#ifndef __BTSTACK_SLIP_H
+#define __BTSTACK_SLIP_H
 
-#include "btstack_util.h"
-#include "btstack_linked_list.h"
+#include <stdint.h>
 
-// This lists should be only accessed by tests.
-static btstack_linked_list_t db_mem_services = NULL;
-#define MAX_NAME_LEN 30
-typedef struct {
-    char service_name[MAX_NAME_LEN+1];
-    int  channel;
-} db_mem_service_t;
+#if defined __cplusplus
+extern "C" {
+#endif
 
-// MARK: PERSISTENT RFCOMM CHANNEL ALLOCATION
-uint8_t rfcomm_service_db_channel_for_service(const char *serviceName){
-    
-    btstack_linked_item_t *it;
-    db_mem_service_t * item;
-    uint8_t max_channel = 1;
+#define BTSTACK_SLIP_SOF 0xc0
 
-    for (it = (btstack_linked_item_t *) db_mem_services; it ; it = it->next){
-        item = (db_mem_service_t *) it;
-        if (strncmp(item->service_name, serviceName, MAX_NAME_LEN) == 0) {
-            // Match found
-            return item->channel;
-        }
+// ENCODER
 
-        // TODO prevent overflow
-        if (item->channel >= max_channel) max_channel = item->channel + 1;
-    }
+/**
+ * @brief Initialise SLIP encoder with data
+ * @param data
+ * @param len
+ */
+void btstack_slip_encoder_start(const uint8_t * data, uint16_t len);
 
-    // Allocate new persistant channel
-    db_mem_service_t * newItem = malloc(sizeof(db_mem_service_t));
+/**
+ * @brief Check if encoder has data ready
+ * @return True if data ready
+ */
+int  btstack_slip_encoder_has_data(void);
 
-    if (!newItem) return 0;
-    
-    strncpy(newItem->service_name, serviceName, MAX_NAME_LEN);
-    newItem->service_name[MAX_NAME_LEN] = 0;
-    newItem->channel = max_channel;
-    btstack_linked_list_add(&db_mem_services, (btstack_linked_item_t *) newItem);
-    return max_channel;
+/** 
+ * @brief Get next byte from encoder 
+ * @return Next bytes from encoder
+ */
+uint8_t btstack_slip_encoder_get_byte(void);
+
+// DECODER
+
+/**
+ * @brief Initialise SLIP decoder with buffer
+ * @param buffer to store received data
+ * @param max_size of buffer
+ */
+void btstack_slip_decoder_init(uint8_t * buffer, uint16_t max_size);
+
+/**
+ * @brief Process received byte
+ * @param input
+ */
+
+void btstack_slip_decoder_process(uint8_t input);
+
+/**
+ * @brief Get size of decoded frame
+ * @return size of frame. Size = 0 => frame not complete
+ */
+
+uint16_t btstack_slip_decoder_frame_size(void);
+
+#if defined __cplusplus
 }
+#endif
+
+#endif

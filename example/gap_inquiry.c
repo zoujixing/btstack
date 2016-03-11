@@ -142,10 +142,16 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
         /* @text In INIT, an inquiry  scan is started, and the application transits to 
          * ACTIVE state.
          */
-        case INIT: 
-            if (packet[2] == HCI_STATE_WORKING) {
-                start_scan();
-                state = ACTIVE;
+        case INIT:
+            switch(event){
+                case BTSTACK_EVENT_STATE:
+                    if (packet[2] == HCI_STATE_WORKING){
+                        start_scan();
+                        state = ACTIVE;
+                    }
+                    break;
+                default:
+                    break;
             }
             break;
 
@@ -183,7 +189,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         }
                         devices[deviceCount].state = REMOTE_NAME_REQUEST;
                         printf("Device found: %s with COD: 0x%06x, pageScan %d, clock offset 0x%04x, rssi 0x%02x\n", bd_addr_to_str(addr),
-                                devices[deviceCount].classOfDevice, devices[deviceCount].pageScanRepetitionMode,
+                                (unsigned int) devices[deviceCount].classOfDevice, devices[deviceCount].pageScanRepetitionMode,
                                 devices[deviceCount].clockOffset, devices[deviceCount].rssi);
                         deviceCount++;
                     }

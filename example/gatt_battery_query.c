@@ -221,7 +221,7 @@ static void hci_event_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
             gap_set_scan_parameters(0,0x0030, 0x0030);
             gap_start_scan();
             break;
-        case GAP_LE_EVENT_ADVERTISING_REPORT:
+        case GAP_EVENT_ADVERTISING_REPORT:
             if (state != TC_W4_SCAN_RESULT) return;
             fill_advertising_report_from_packet(&report, packet);
             // stop scanning, and connect to the device
@@ -264,7 +264,7 @@ int btstack_main(int argc, const char * argv[]){
     while (arg < argc) {
 		if(!strcmp(argv[arg], "-a") || !strcmp(argv[arg], "--address")){
 			arg++;
-			cmdline_addr_found = sscanf_bd_addr((uint8_t *)argv[arg], cmdline_addr);
+			cmdline_addr_found = sscanf_bd_addr(argv[arg], cmdline_addr);
             arg++;
             continue;
         }

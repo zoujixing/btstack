@@ -24,8 +24,8 @@ uint16_t get_gatt_client_handle(void){
 }
 
 void mock_simulate_command_complete(const hci_cmd_t *cmd){
-	uint8_t packet[] = {HCI_EVENT_COMMAND_COMPLETE, 4, 1, cmd->opcode & 0xff, cmd->opcode >> 8, 0};
-	registered_hci_event_handler(HCI_EVENT_PACKET, 0, (uint8_t *)&packet, sizeof(packet));
+	uint8_t packet[] = {HCI_EVENT_COMMAND_COMPLETE, 4, 1, (uint8_t) (cmd->opcode & 0xff), (uint8_t) (cmd->opcode >> 8), 0};
+	registered_hci_event_handler(HCI_EVENT_PACKET, NULL, (uint8_t *)&packet, sizeof(packet));
 }
 
 void mock_simulate_hci_state_working(void){
@@ -61,10 +61,13 @@ static void att_init_connection(att_connection_t * att_connection){
 	att_connection->authorized = 0;
 }
 
+int hci_can_send_acl_le_packet_now(void){
+	return 1;
+}
+
 int  l2cap_can_send_connectionless_packet_now(void){
 	return 1;	
 }
-
 
 uint8_t *l2cap_get_outgoing_buffer(void){
 	// printf("l2cap_get_outgoing_buffer\n");
