@@ -38,11 +38,11 @@
  
 // *****************************************************************************
 //
-// Minimal test for HSP Headset (!! UNDER DEVELOPMENT !!)
+// HFP Hands-Free (HF) unit PTS Test
 //
 // *****************************************************************************
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -57,16 +57,17 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include <btstack/hci_cmds.h>
-#include <btstack/run_loop.h>
-#include <btstack/sdp_util.h>
+#include "hci_cmd.h"
+#include "btstack_run_loop.h"
+#include "classic/sdp_util.h"
 
 #include "hci.h"
 #include "l2cap.h"
-#include "rfcomm.h"
-#include "sdp.h"
-#include "debug.h"
-#include "hfp_hf.h"
+#include "btstack_event.h"
+#include "classic/rfcomm.h"
+#include "sdp_server.h"
+#include "btstack_debug.h"
+#include "classic/hfp_hf.h"
 #include "stdin_support.h"
 
 const uint32_t   hfp_service_buffer[150/4]; // implicit alignment to 4-byte memory address
@@ -85,11 +86,14 @@ static uint16_t indicators[1] = {0x01};
 char cmd;
 
 // prototypes
-static void show_usage();
+static void show_usage(void);
 
 // Testig User Interface 
 static void show_usage(void){
-    printf("\n--- Bluetooth HFP Hands-Free (HF) unit Test Console ---\n");
+    bd_addr_t iut_address;
+    gap_local_bd_addr(iut_address);
+
+    printf("\n--- Bluetooth HFP Hands-Free (HF) unit Test Console %s ---\n", bd_addr_to_str(iut_address));
     printf("---\n");
 
     printf("z - use iPhone as Audiogateway\n");
@@ -173,13 +177,13 @@ static void show_usage(void){
     printf("---\n");
 }
 
-static int stdin_process(struct data_source *ds){
+static void stdin_process(btstack_data_source_t *ds, btstack_data_source_callback_type_t callback_type){
     read(ds->fd, &cmd, 1);
 
     if (cmd >= '0' && cmd <= '9'){
         printf("DTMF Code: %c\n", cmd);
         hfp_hf_send_dtmf_code(device_addr, cmd);
-        return 0;
+        return;
     }
 
     switch (cmd){
@@ -455,21 +459,15 @@ static int stdin_process(struct data_source *ds){
             show_usage();
             break;
     }
-
-    return 0;
 }
 
 
-static void packet_handler(uint8_t * event, uint16_t event_size){
-    if (event[0] == RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE){
-        handle = READ_BT_16(event, 9);
-        printf("RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE received for handle 0x%04x\n", handle);
-        return;
-    }
+static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * event, uint16_t event_size){
     if (event[0] != HCI_EVENT_HFP_META) return;
 
     switch (event[2]) {   
         case HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_ESTABLISHED:
+            handle = hfp_subevent_service_level_connection_established_get_con_handle(event);
             printf("Service level connection established.\n\n");
             break;
         case HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_RELEASED:
@@ -534,11 +532,11 @@ int btstack_main(int argc, const char * argv[]){
     
     hfp_hf_register_packet_handler(packet_handler);
 
-    sdp_init();
     // init SDP, create record for SPP and register with SDP
+    sdp_init();
     memset((uint8_t *)hfp_service_buffer, 0, sizeof(hfp_service_buffer));
-    hfp_hf_create_sdp_record((uint8_t *)hfp_service_buffer, rfcomm_channel_nr, hfp_hf_service_name, 0);
-    sdp_register_service_internal(NULL, (uint8_t *)hfp_service_buffer);
+    hfp_hf_create_sdp_record((uint8_t *)hfp_service_buffer, 0x10006, rfcomm_channel_nr, hfp_hf_service_name, 0);
+    sdp_register_service((uint8_t *)hfp_service_buffer);
 
     // pre-select pts
     memcpy(device_addr, pts_addr, 6);

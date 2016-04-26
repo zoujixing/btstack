@@ -11,7 +11,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <btstack/sdp_util.h>
+#include "bluetooth.h"
+
+#include "classic/sdp_util.h"
 #include "CppUTest/TestHarness.h"
 #include "CppUTest/CommandLineTestRunner.h"
 

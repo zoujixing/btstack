@@ -37,7 +37,7 @@
  
 // *****************************************************************************
 //
-// Minimal test for HSP Audio Gateway (!! UNDER DEVELOPMENT !!)
+// HFP Audio Gateway PTS Test
 //
 // *****************************************************************************
 
@@ -54,16 +54,16 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include <btstack/hci_cmds.h>
-#include <btstack/run_loop.h>
-#include <btstack/sdp_util.h>
-
+#include "btstack_debug.h"
+#include "btstack_event.h"
+#include "btstack_run_loop.h"
+#include "classic/hfp_ag.h"
+#include "classic/rfcomm.h"
+#include "classic/sdp_server.h"
+#include "classic/sdp_util.h"
 #include "hci.h"
+#include "hci_cmd.h"
 #include "l2cap.h"
-#include "rfcomm.h"
-#include "sdp.h"
-#include "debug.h"
-#include "hfp_ag.h"
 #include "stdin_support.h"
  
 
@@ -72,8 +72,9 @@ const uint8_t    rfcomm_channel_nr = 1;
 const char hfp_ag_service_name[] = "BTstack HFP AG Test";
 
 static bd_addr_t device_addr;
-static bd_addr_t pts_addr = {0x00,0x15,0x83,0x5F,0x9D,0x46};
-//static bd_addr_t pts_addr = {0x00,0x1b,0xDC,0x07,0x32,0xEF};
+//static bd_addr_t pts_addr = {0x00,0x15,0x83,0x5F,0x9D,0x46};
+static bd_addr_t pts_addr = {0x00,0x1A,0x7D,0xDA,0x71,0x0A};
+// static bd_addr_t pts_addr = {0x00,0x1b,0xDC,0x07,0x32,0xEF};
 static bd_addr_t speaker_addr = {0x00, 0x21, 0x3C, 0xAC, 0xF7, 0x38};
 static uint8_t codecs[1] = {HFP_CODEC_CVSD};
 static uint16_t handle = -1;
@@ -102,7 +103,7 @@ static hfp_generic_status_indicator_t hf_indicators[] = {
 
 char cmd;
 // prototypes
-static void show_usage();
+static void show_usage(void);
 
 // GAP INQUIRY
 
@@ -129,7 +130,7 @@ enum STATE state = INIT;
 static int getDeviceIndexForAddress( bd_addr_t addr){
     int j;
     for (j=0; j< deviceCount; j++){
-        if (BD_ADDR_CMP(addr, devices[j].address) == 0){
+        if (bd_addr_cmp(addr, devices[j].address) == 0){
             return j;
         }
     }
@@ -194,10 +195,10 @@ static void inquiry_packet_handler (uint8_t packet_type, uint8_t *packet, uint16
     switch(event){
         case HCI_EVENT_INQUIRY_RESULT:
         case HCI_EVENT_INQUIRY_RESULT_WITH_RSSI:{
-            numResponses = packet[2];
+            numResponses = hci_event_inquiry_result_get_num_responses(packet);
             int offset = 3;
             for (i=0; i<numResponses && deviceCount < MAX_DEVICES;i++){
-                bt_flip_addr(addr, &packet[offset]);
+                reverse_bd_addr(&packet[offset], addr);
                 offset += 6;
                 index = getDeviceIndexForAddress(addr);
                 if (index >= 0) continue;   // already in our list
@@ -208,16 +209,16 @@ static void inquiry_packet_handler (uint8_t packet_type, uint8_t *packet, uint16
 
                 if (event == HCI_EVENT_INQUIRY_RESULT){
                     offset += 2; // Reserved + Reserved
-                    devices[deviceCount].classOfDevice = READ_BT_24(packet, offset);
+                    devices[deviceCount].classOfDevice = little_endian_read_24(packet, offset);
                     offset += 3;
-                    devices[deviceCount].clockOffset =   READ_BT_16(packet, offset) & 0x7fff;
+                    devices[deviceCount].clockOffset =   little_endian_read_16(packet, offset) & 0x7fff;
                     offset += 2;
                     devices[deviceCount].rssi  = 0;
                 } else {
                     offset += 1; // Reserved
-                    devices[deviceCount].classOfDevice = READ_BT_24(packet, offset);
+                    devices[deviceCount].classOfDevice = little_endian_read_24(packet, offset);
                     offset += 3;
-                    devices[deviceCount].clockOffset =   READ_BT_16(packet, offset) & 0x7fff;
+                    devices[deviceCount].clockOffset =   little_endian_read_16(packet, offset) & 0x7fff;
                     offset += 2;
                     devices[deviceCount].rssi  = packet[offset];
                     offset += 1;
@@ -241,13 +242,13 @@ static void inquiry_packet_handler (uint8_t packet_type, uint8_t *packet, uint16
             continue_remote_names();
             break;
 
-        case BTSTACK_EVENT_REMOTE_NAME_CACHED:
-            bt_flip_addr(addr, &packet[3]);
+        case DAEMON_EVENT_REMOTE_NAME_CACHED:
+            reverse_bd_addr(&packet[3], addr);
             printf("Cached remote name for %s: '%s'\n", bd_addr_to_str(addr), &packet[9]);
             break;
 
         case HCI_EVENT_REMOTE_NAME_REQUEST_COMPLETE:
-            bt_flip_addr(addr, &packet[3]);
+            reverse_bd_addr(&packet[3], addr);
             index = getDeviceIndexForAddress(addr);
             if (index >= 0) {
                 if (packet[2] == 0) {
@@ -268,7 +269,10 @@ static void inquiry_packet_handler (uint8_t packet_type, uint8_t *packet, uint16
 
 // Testig User Interface 
 static void show_usage(void){
-    printf("\n--- Bluetooth HFP Hands-Free (HF) unit Test Console ---\n");
+    bd_addr_t iut_address;
+    gap_local_bd_addr(iut_address);
+
+    printf("\n--- Bluetooth HFP Audiogateway (AG) unit Test Console %s ---\n", bd_addr_to_str(iut_address));
     printf("---\n");
     
     printf("a - establish HFP connection to PTS module\n");
@@ -339,7 +343,7 @@ static void show_usage(void){
     printf("---\n");
 }
 
-static int stdin_process(struct data_source *ds){
+static void stdin_process(btstack_data_source_t *ds, btstack_data_source_callback_type_t callback_type){
     read(ds->fd, &cmd, 1);
     switch (cmd){
         case 'a':
@@ -533,7 +537,7 @@ static int stdin_process(struct data_source *ds){
             break;
         case 't':
             log_info("USER:\'%c\'", cmd);
-            printf("Terminate HCI connection.\n");
+            printf("Terminate HCI connection. 0x%2x\n", handle);
             gap_disconnect(handle);
             break;
         case 'u':
@@ -563,32 +567,17 @@ static int stdin_process(struct data_source *ds){
             show_usage();
             break;
     }
-
-    return 0;
 }
 
 
-static void packet_handler(uint8_t * event, uint16_t event_size){
-
-    if (event[0] == RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE){
-        handle = READ_BT_16(event, 9);
-        printf("RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE received for handle 0x%04x\n", handle);
-        return;
-    }
-
+static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * event, uint16_t event_size){
     switch (event[0]){
-        case RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE:
-            handle = READ_BT_16(event, 9);
-            printf("RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE received for handle 0x%04x\n", handle);
-            return;
-
         case HCI_EVENT_INQUIRY_RESULT:
         case HCI_EVENT_INQUIRY_RESULT_WITH_RSSI:
         case HCI_EVENT_INQUIRY_COMPLETE:
         case HCI_EVENT_REMOTE_NAME_REQUEST_COMPLETE:
             inquiry_packet_handler(HCI_EVENT_PACKET, event, event_size);
             break;
-
         default:
             break;
     }
@@ -606,6 +595,7 @@ static void packet_handler(uint8_t * event, uint16_t event_size){
 
     switch (event[2]) {   
         case HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_ESTABLISHED:
+            handle = hfp_subevent_service_level_connection_established_get_con_handle(event);
             printf("Service level connection established.\n");
             break;
         case HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_RELEASED:
@@ -645,7 +635,7 @@ static void packet_handler(uint8_t * event, uint16_t event_size){
             printf("\n** Send DTMF Codes: '%s'\n", &event[3]);
             hfp_ag_send_dtmf_code_done(device_addr);
             break;
-        case HFP_CMD_CALL_ANSWERED:
+        case HFP_SUBEVENT_CALL_ANSWERED:
             printf("Call answered by HF\n");
             break;
         default:
@@ -674,12 +664,12 @@ int btstack_main(int argc, const char * argv[]){
     hfp_ag_set_subcriber_number_information(&subscriber_number, 1);
     hfp_ag_register_packet_handler(packet_handler);
 
-    sdp_init();
     // init SDP, create record for SPP and register with SDP
+    sdp_init();
     memset((uint8_t *)hfp_service_buffer, 0, sizeof(hfp_service_buffer));
-    hfp_ag_create_sdp_record((uint8_t *)hfp_service_buffer, rfcomm_channel_nr, hfp_ag_service_name, 0, 0);
+    hfp_ag_create_sdp_record((uint8_t *)hfp_service_buffer, 0x10005, rfcomm_channel_nr, hfp_ag_service_name, 0, 0);
 
-    sdp_register_service_internal(NULL, (uint8_t *)hfp_service_buffer);
+    sdp_register_service((uint8_t *)hfp_service_buffer);
     
 
     // pre-select pts

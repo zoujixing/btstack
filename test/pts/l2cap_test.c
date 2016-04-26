@@ -41,7 +41,7 @@
 //
 // *****************************************************************************
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -49,23 +49,25 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <btstack/hci_cmds.h>
-#include <btstack/run_loop.h>
-
-#include "hci.h"
-#include "gap.h"
+#include "btstack_event.h"
 #include "btstack_memory.h"
+#include "btstack_run_loop.h"
+#include "gap.h"
+#include "hci.h"
+#include "hci_cmd.h"
 #include "hci_dump.h"
 #include "l2cap.h"
 #include "stdin_support.h"
  
-static void show_usage();
+static void show_usage(void);
 
 // static bd_addr_t remote = {0x04,0x0C,0xCE,0xE4,0x85,0xD3};
 static bd_addr_t remote = {0x84, 0x38, 0x35, 0x65, 0xD1, 0x15};
 
 static uint16_t handle;
 static uint16_t local_cid;
+
+static btstack_packet_callback_registration_t hci_event_callback_registration;
 
 static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
 
@@ -77,28 +79,28 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
     switch (packet[0]) {
         case BTSTACK_EVENT_STATE:
             // bt stack activated, get started 
-            if (packet[2] == HCI_STATE_WORKING){
+            if (btstack_event_state_get_state(packet) == HCI_STATE_WORKING){
                 printf("BTstack L2CAP Test Ready\n");
                 show_usage();
             }
             break;
         case L2CAP_EVENT_CHANNEL_OPENED:
             // inform about new l2cap connection
-            bt_flip_addr(event_addr, &packet[3]);
-            psm = READ_BT_16(packet, 11); 
-            local_cid = READ_BT_16(packet, 13); 
-            handle = READ_BT_16(packet, 9);
+            reverse_bd_addr(&packet[3], event_addr);
+            psm = little_endian_read_16(packet, 11); 
+            local_cid = little_endian_read_16(packet, 13); 
+            handle = little_endian_read_16(packet, 9);
             if (packet[2] == 0) {
                 printf("Channel successfully opened: %s, handle 0x%02x, psm 0x%02x, local cid 0x%02x, remote cid 0x%02x\n",
-                       bd_addr_to_str(event_addr), handle, psm, local_cid,  READ_BT_16(packet, 15));
+                       bd_addr_to_str(event_addr), handle, psm, local_cid,  little_endian_read_16(packet, 15));
             } else {
                 printf("L2CAP connection to device %s failed. status code %u\n", bd_addr_to_str(event_addr), packet[2]);
             }
             break;
         case L2CAP_EVENT_INCOMING_CONNECTION: {
-            uint16_t l2cap_cid  = READ_BT_16(packet, 12);
+            uint16_t l2cap_cid  = little_endian_read_16(packet, 12);
             printf("L2CAP Accepting incoming connection request\n"); 
-            l2cap_accept_connection_internal(l2cap_cid);
+            l2cap_accept_connection(l2cap_cid);
             break;
         }
 
@@ -106,10 +108,6 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
         default:
             break;
     }
-}
-
-static void packet_handler2 (void * connection, uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
-    packet_handler(packet_type, 0, packet, size);
 }
 
 static void show_usage(void){
@@ -122,25 +120,25 @@ static void show_usage(void){
     printf("---\n");
 }
 
-static int stdin_process(struct data_source *ds){
+static void stdin_process(btstack_data_source_t *ds, btstack_data_source_callback_type_t callback_type){
     char buffer;
     read(ds->fd, &buffer, 1);
     switch (buffer){
         case 'c':
             printf("Creating L2CAP Connection to %s, PSM SDP\n", bd_addr_to_str(remote));
-            l2cap_create_channel_internal(NULL, packet_handler, remote, PSM_SDP, 100);
+            l2cap_create_channel(packet_handler, remote, PSM_SDP, 100, NULL);
             break;
         case 's':
             printf("Send L2CAP Data\n");
-            l2cap_send_internal(local_cid, (uint8_t *) "0123456789", 10);
-       break;
+            l2cap_send(local_cid, (uint8_t *) "0123456789", 10);
+            break;
         case 'e':
             printf("Send L2CAP ECHO Request\n");
             l2cap_send_echo_request(handle, (uint8_t *)  "Hello World!", 13);
             break;
         case 'd':
             printf("L2CAP Channel Closed\n");
-            l2cap_disconnect_internal(local_cid, 0);
+            l2cap_disconnect(local_cid, 0);
             break;
         case '\n':
         case '\r':
@@ -150,19 +148,21 @@ static int stdin_process(struct data_source *ds){
             break;
 
     }
-    return 0;
 }
 
 
 int btstack_main(int argc, const char * argv[]);
 int btstack_main(int argc, const char * argv[]){
 
-    hci_set_class_of_device(0x220404);
-    hci_discoverable_control(1);
+    gap_set_class_of_device(0x220404);
+    gap_discoverable_control(1);
+
+    /* Register for HCI events */
+    hci_event_callback_registration.callback = &packet_handler;
+    hci_add_event_handler(&hci_event_callback_registration);
 
     l2cap_init();
-    l2cap_register_packet_handler(&packet_handler2);
-    l2cap_register_service_internal(NULL, packet_handler, PSM_SDP, 100, LEVEL_0);
+    l2cap_register_service(packet_handler, PSM_SDP, 100, LEVEL_0);
     
     // turn on!
     hci_power_control(HCI_POWER_ON);

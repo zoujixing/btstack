@@ -37,32 +37,33 @@
  
 // *****************************************************************************
 //
-// Minimal test for HSP Audio Gateway (!! UNDER DEVELOPMENT !!)
+// HFP Audio Gateway PTS Test
 //
 // *****************************************************************************
 
+#include <errno.h>
+#include <fcntl.h>
+#include <net/if_arp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <net/if_arp.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include <sys/types.h>
 #include <unistd.h>
-#include <errno.h>
 
-#include <btstack/hci_cmds.h>
-#include <btstack/run_loop.h>
-#include <btstack/sdp_util.h>
-
+#include "btstack_debug.h"
+#include "btstack_event.h"
+#include "btstack_run_loop.h"
+#include "classic/sdp_server.h"
+#include "classic/sdp_util.h"
 #include "hci.h"
-#include "l2cap.h"
-#include "sdp.h"
-#include "debug.h"
+#include "hci_cmd.h"
 #include "hsp_ag.h"
+#include "l2cap.h"
+#include "rfcomm.h"
 #include "stdin_support.h"
  
 static uint32_t   hsp_service_buffer[150/4]; // implicit alignment to 4-byte memory address
@@ -70,7 +71,8 @@ static uint8_t    rfcomm_channel_nr = 1;
 
 static char hsp_ag_service_name[] = "Audio Gateway Test";
 static bd_addr_t bt_speaker_addr = {0x00, 0x21, 0x3C, 0xAC, 0xF7, 0x38};
-static bd_addr_t pts_addr = {0x00,0x1b,0xDC,0x07,0x32,0xEF};
+static bd_addr_t pts_addr = {0x00,0x1A,0x7D,0xDA,0x71,0x0A};
+// static bd_addr_t pts_addr = {0x00,0x1b,0xDC,0x07,0x32,0xEF};
 
 static char hs_cmd_buffer[100];
 // prototypes
@@ -79,8 +81,9 @@ static void show_usage(void);
 static void show_usage(void){
     printf("\n--- Bluetooth HSP AudioGateway Test Console ---\n");
     printf("---\n");
-    printf("p - establish audio connection to PTS module\n");
-    printf("e - establish audio connection to Bluetooth Speaker\n");
+    printf("p - establish service level connection to PTS module\n");
+    printf("e - establish service level connection to Bluetooth Speaker\n");
+    printf("a - release audio connection\n");
     printf("d - release audio connection\n");
     printf("m - set microphone gain 8\n");
     printf("M - set microphone gain 15\n");
@@ -94,18 +97,22 @@ static void show_usage(void){
     printf("---\n");
 }
 
-static int stdin_process(struct data_source *ds){
+static void stdin_process(btstack_data_source_t *ds, btstack_data_source_callback_type_t callback_type){
     char buffer;
     read(ds->fd, &buffer, 1);
 
     switch (buffer){
         case 'p':
-            printf("Establishing audio connection to PTS module %s...\n", bd_addr_to_str(pts_addr));
+            printf("Establishing service level connection to PTS module %s...\n", bd_addr_to_str(pts_addr));
             hsp_ag_connect(pts_addr);
             break;
         case 'e':
-            printf("Establishing audio connection to Bluetooth Speaker %s...\n", bd_addr_to_str(bt_speaker_addr));
+            printf("Establishing service level connection to Bluetooth Speaker %s...\n", bd_addr_to_str(bt_speaker_addr));
             hsp_ag_connect(bt_speaker_addr);
+            break;
+        case 'a':
+            printf("Establish audio connection\n");
+            hsp_ag_establish_audio_connection();
             break;
         case 'd':
             printf("Releasing audio connection\n");
@@ -144,11 +151,10 @@ static int stdin_process(struct data_source *ds){
             break;
 
     }
-    return 0;
 }
 
 // Audio Gateway routines 
-static void packet_handler(uint8_t * event, uint16_t event_size){
+static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * event, uint16_t event_size){
     switch (event[2]) {
         case HSP_SUBEVENT_AUDIO_CONNECTION_COMPLETE:
             if (event[3] == 0){
@@ -184,15 +190,17 @@ static void packet_handler(uint8_t * event, uint16_t event_size){
 
 int btstack_main(int argc, const char * argv[]);
 int btstack_main(int argc, const char * argv[]){
-    // init SDP, create record for SPP and register with SDP
-    memset((uint8_t *)hsp_service_buffer, 0, sizeof(hsp_service_buffer));
-    hsp_ag_create_sdp_record((uint8_t *)hsp_service_buffer, rfcomm_channel_nr, hsp_ag_service_name);
     
+    l2cap_init();
+    rfcomm_init();
     hsp_ag_init(rfcomm_channel_nr);
     hsp_ag_register_packet_handler(packet_handler);
     
+    // init SDP, create record for SPP and register with SDP
     sdp_init();
-    sdp_register_service_internal(NULL, (uint8_t *)hsp_service_buffer);
+    memset((uint8_t *)hsp_service_buffer, 0, sizeof(hsp_service_buffer));
+    hsp_ag_create_sdp_record((uint8_t *)hsp_service_buffer, 0x10003, rfcomm_channel_nr, hsp_ag_service_name);
+    sdp_register_service((uint8_t *)hsp_service_buffer);
 
     // turn on!
     hci_power_control(HCI_POWER_ON);

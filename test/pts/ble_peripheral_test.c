@@ -47,21 +47,20 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
-#include <btstack/run_loop.h>
-#include "debug.h"
+#include "ble/att_db.h"
+#include "ble/att_server.h"
+#include "ble/le_device_db.h"
+#include "ble/sm.h"
+#include "btstack_debug.h"
+#include "btstack_event.h"
 #include "btstack_memory.h"
+#include "btstack_run_loop.h"
+#include "gap.h"
 #include "hci.h"
 #include "hci_dump.h"
-
 #include "l2cap.h"
-
-#include "sm.h"
-#include "att.h"
-#include "att_server.h"
-#include "gap_le.h"
-#include "le_device_db.h"
 #include "stdin_support.h"
  
 #define HEARTBEAT_PERIOD_MS 1000
@@ -110,7 +109,7 @@ static bd_addr_t master_address;
 static int ui_passkey = 0;
 static int ui_digits_for_passkey = 0;
 
-static timer_source_t heartbeat;
+static btstack_timer_source_t heartbeat;
 static uint8_t counter = 0;
 static int update_client = 0;
 static int client_configuration = 0;
@@ -118,9 +117,9 @@ static uint16_t client_configuration_handle;
 
 static uint16_t handle = 0;
 
-static void app_run();
-static void show_usage();
-static void update_advertisements();
+static void app_run(void);
+static void show_usage(void);
+static void update_advertisements(void);
 
 
 // static bd_addr_t tester_address = {0x00, 0x1B, 0xDC, 0x06, 0x07, 0x5F};
@@ -262,10 +261,10 @@ static int att_attribute_for_handle(uint16_t aHandle){
 }
 
 
-static void  heartbeat_handler(struct timer *ts){
+static void  heartbeat_handler(struct btstack_timer_source *ts){
     // restart timer
-    run_loop_set_timer(ts, HEARTBEAT_PERIOD_MS);
-    run_loop_add_timer(ts);
+    btstack_run_loop_set_timer(ts, HEARTBEAT_PERIOD_MS);
+    btstack_run_loop_add_timer(ts);
 
     counter++;
     update_client = 1;
@@ -274,17 +273,17 @@ static void  heartbeat_handler(struct timer *ts){
 
 static void app_run(void){
     if (!update_client) return;
-    if (!att_server_can_send()) return;
+    if (!att_server_can_send_packet_now(handle)) return;
 
     int result = -1;
     switch (client_configuration){
         case 0x01:
             printf("Notify value %u\n", counter);
-            result = att_server_notify(client_configuration_handle - 1, &counter, 1);
+            result = att_server_notify(handle, client_configuration_handle - 1, &counter, 1);
             break;
         case 0x02:
             printf("Indicate value %u\n", counter);
-            result = att_server_indicate(client_configuration_handle - 1, &counter, 1);
+            result = att_server_indicate(handle, client_configuration_handle - 1, &counter, 1);
             break;
         default:
             return;
@@ -300,7 +299,7 @@ static void app_run(void){
 // - if buffer == NULL, don't copy data, just return size of value
 // - if buffer != NULL, copy data and return number bytes copied
 // @param offset defines start of attribute value
-static uint16_t att_read_callback(uint16_t con_handle, uint16_t attribute_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size){
+static uint16_t att_read_callback(hci_con_handle_t con_handle, uint16_t attribute_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size){
 
     printf("READ Callback, handle %04x, offset %u, buffer size %u\n", attribute_handle, offset, buffer_size);
     uint16_t  att_value_len;
@@ -314,7 +313,7 @@ static uint16_t att_read_callback(uint16_t con_handle, uint16_t attribute_handle
             return att_value_len; 
         case ATT_CHARACTERISTIC_GAP_APPEARANCE_01_VALUE_HANDLE:
             if (buffer){
-                bt_store_16(buffer, 0, gap_appearance);
+                little_endian_store_16(buffer, 0, gap_appearance);
             }
             return 2;
         case ATT_CHARACTERISTIC_GAP_PERIPHERAL_PRIVACY_FLAG_01_VALUE_HANDLE:
@@ -324,7 +323,7 @@ static uint16_t att_read_callback(uint16_t con_handle, uint16_t attribute_handle
             return 1;
         case ATT_CHARACTERISTIC_GAP_RECONNECTION_ADDRESS_01_VALUE_HANDLE:
             if (buffer) {
-                bt_flip_addr(buffer, gap_reconnection_address);
+                reverse_bd_addr(gap_reconnection_address, buffer);
             }
             return 6;
 
@@ -379,7 +378,7 @@ static uint16_t att_read_callback(uint16_t con_handle, uint16_t attribute_handle
 }
 
 // write requests
-static int att_write_callback(uint16_t con_handle, uint16_t attribute_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size){
+static int att_write_callback(hci_con_handle_t con_handle, uint16_t attribute_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size){
     printf("WRITE Callback, handle %04x, mode %u, offset %u, data: ", attribute_handle, transaction_mode, offset);
     printf_hexdump(buffer, buffer_size);
 
@@ -390,7 +389,7 @@ static int att_write_callback(uint16_t con_handle, uint16_t attribute_handle, ui
             printf("Setting device name to '%s'\n", gap_device_name);
             return 0;
         case ATT_CHARACTERISTIC_GAP_APPEARANCE_01_VALUE_HANDLE:
-            gap_appearance = READ_BT_16(buffer, 0);
+            gap_appearance = little_endian_read_16(buffer, 0);
             printf("Setting appearance to 0x%04x'\n", gap_appearance);
             return 0;
         case ATT_CHARACTERISTIC_GAP_PERIPHERAL_PRIVACY_FLAG_01_VALUE_HANDLE:
@@ -399,7 +398,7 @@ static int att_write_callback(uint16_t con_handle, uint16_t attribute_handle, ui
             update_advertisements();
             return 0;
         case ATT_CHARACTERISTIC_GAP_RECONNECTION_ADDRESS_01_VALUE_HANDLE:
-            bt_flip_addr(gap_reconnection_address, buffer);
+            reverse_bd_addr(buffer, gap_reconnection_address);
             printf("Setting Reconnection Address to %s\n", bd_addr_to_str(gap_reconnection_address));
             return 0;
         default:
@@ -541,7 +540,7 @@ static void gap_run(void){
 }
 
 static void app_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
-    
+    bd_addr_t event_address;
     switch (packet_type) {
             
         case HCI_EVENT_PACKET:
@@ -549,7 +548,7 @@ static void app_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *
                 
                 case BTSTACK_EVENT_STATE:
                     // bt stack activated, get started
-                    if (packet[2] == HCI_STATE_WORKING) {
+                    if (btstack_event_state_get_state(packet) == HCI_STATE_WORKING){
                         printf("SM Init completed\n");
                         todos = SET_ADVERTISEMENT_PARAMS | SET_ADVERTISEMENT_DATA | SET_SCAN_RESPONSE_DATA | ENABLE_ADVERTISEMENTS;
                         update_advertisements();
@@ -558,13 +557,13 @@ static void app_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *
                     break;
                 
                 case HCI_EVENT_LE_META:
-                    switch (packet[2]) {
+                    switch (hci_event_le_meta_get_subevent_code(packet)) {
                         case HCI_SUBEVENT_LE_CONNECTION_COMPLETE:
                             advertisements_enabled = 0;
-                            handle = READ_BT_16(packet, 4);
+                            handle = little_endian_read_16(packet, 4);
                             printf("Connection handle 0x%04x\n", handle);
                             // request connection parameter update - test parameters
-                            // l2cap_le_request_connection_parameter_update(READ_BT_16(packet, 4), 20, 1000, 100, 100);
+                            // l2cap_le_request_connection_parameter_update(little_endian_read_16(packet, 4), 20, 1000, 100, 100);
                             break;
 
                         default:
@@ -573,51 +572,44 @@ static void app_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *
                     break;
 
                 case HCI_EVENT_DISCONNECTION_COMPLETE:
-                    if (!advertisements_enabled == 0 && gap_discoverable){
+                    if (advertisements_enabled && gap_discoverable){
                         todos = ENABLE_ADVERTISEMENTS;
                     }
                     att_attributes_init();
                     att_write_queue_init();
                     break;
                     
-                case SM_JUST_WORKS_REQUEST: {
-                    printf("SM_JUST_WORKS_REQUEST\n");
-                    sm_event_t * event = (sm_event_t *) packet;
-                    sm_just_works_confirm(event->addr_type, event->address);
+                case SM_EVENT_JUST_WORKS_REQUEST:
+                    printf("SM_EVENT_JUST_WORKS_REQUEST\n");
+                    sm_just_works_confirm(little_endian_read_16(packet, 2));
                     break;
-                }
 
-                case SM_PASSKEY_INPUT_NUMBER: {
+                case SM_EVENT_PASSKEY_INPUT_NUMBER:
                     // display number
-                    sm_event_t * event = (sm_event_t *) packet;
-                    memcpy(master_address, event->address, 6);
-                    master_addr_type = event->addr_type;
+                    master_addr_type = packet[4];
+                    reverse_bd_addr(&packet[5], event_address);
                     printf("\nGAP Bonding %s (%u): Enter 6 digit passkey: '", bd_addr_to_str(master_address), master_addr_type);
                     fflush(stdout);
                     ui_passkey = 0;
                     ui_digits_for_passkey = 6;
                     break;
-                }
 
-                case SM_PASSKEY_DISPLAY_NUMBER: {
+                case SM_EVENT_PASSKEY_DISPLAY_NUMBER:
                     // display number
-                    sm_event_t * event = (sm_event_t *) packet;
-                    printf("\nGAP Bonding %s (%u): Display Passkey '%06u\n", bd_addr_to_str(master_address), master_addr_type, event->passkey);
+                    printf("\nGAP Bonding %s (%u): Display Passkey '%06u\n", bd_addr_to_str(master_address), master_addr_type, little_endian_read_32(packet, 11));
                     break;
-                }
 
-                case SM_PASSKEY_DISPLAY_CANCEL: 
+                case SM_EVENT_PASSKEY_DISPLAY_CANCEL: 
                     printf("\nGAP Bonding %s (%u): Display cancel\n", bd_addr_to_str(master_address), master_addr_type);
                     break;
 
-                case SM_AUTHORIZATION_REQUEST: {
+                case SM_EVENT_AUTHORIZATION_REQUEST:
                     // auto-authorize connection if requested
-                    sm_event_t * event = (sm_event_t *) packet;
-                    sm_authorization_grant(event->addr_type, event->address);
+                    sm_authorization_grant(little_endian_read_16(packet, 2));
                     break;
-                }
-                case ATT_HANDLE_VALUE_INDICATION_COMPLETE:
-                    printf("ATT_HANDLE_VALUE_INDICATION_COMPLETE status %u\n", packet[2]);
+
+                case ATT_EVENT_HANDLE_VALUE_INDICATION_COMPLETE:
+                    printf("ATT_EVENT_HANDLE_VALUE_INDICATION_COMPLETE status %u\n", packet[2]);
                     break;
 
                 default:
@@ -718,22 +710,22 @@ static void update_auth_req(void){
     sm_set_authentication_requirements(auth_req);
 }
 
-static int stdin_process(struct data_source *ds){
+static void stdin_process(btstack_data_source_t *ds, btstack_data_source_callback_type_t callback_type){
     char buffer;
     read(ds->fd, &buffer, 1);
 
     // passkey input
     if (ui_digits_for_passkey){
-        if (buffer < '0' || buffer > '9') return 0;
+        if (buffer < '0' || buffer > '9') return;
         printf("%c", buffer);
         fflush(stdout);
         ui_passkey = ui_passkey * 10 + buffer - '0';
         ui_digits_for_passkey--;
         if (ui_digits_for_passkey == 0){
             printf("\nSending Passkey '%06x'\n", ui_passkey);
-            sm_passkey_input(master_addr_type, master_address, ui_passkey);
+            sm_passkey_input(handle, ui_passkey);
         }
-        return 0;
+        return;
     }
 
     switch (buffer){
@@ -937,7 +929,7 @@ static int stdin_process(struct data_source *ds){
             break;
 
     }
-    return 0;
+    return;
 }
 
 static int get_oob_data_callback(uint8_t addres_type, bd_addr_t addr, uint8_t * oob_data){
@@ -945,17 +937,6 @@ static int get_oob_data_callback(uint8_t addres_type, bd_addr_t addr, uint8_t * 
     memcpy(oob_data, sm_oob_data, 16);
     return 1;
 }
-
-#if defined(HAVE_UART_CSR) || defined(HAVE_UART_CC256x)
-static hci_uart_config_t hci_uart_config = {
-    // "/dev/tty.usbserial-A40081HW",
-    "/dev/tty.usbserial-AD025KU2",
-    115200,
-    0, // 1000000,
-    1
-};
-#endif
-
 
 int btstack_main(int argc, const char * argv[]);
 int btstack_main(int argc, const char * argv[]){
@@ -995,8 +976,8 @@ int btstack_main(int argc, const char * argv[]){
 
     // set one-shot timer
     heartbeat.process = &heartbeat_handler;
-    run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
-    run_loop_add_timer(&heartbeat);
+    btstack_run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
+    btstack_run_loop_add_timer(&heartbeat);
 
     // turn on!
     hci_power_control(HCI_POWER_ON);

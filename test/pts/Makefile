@@ -1,20 +1,19 @@
 # Makefile for libusb based PTS tests
 BTSTACK_ROOT = ../..
-POSIX_ROOT= ${BTSTACK_ROOT}/platforms/posix
 
 CORE += main.c stdin_support.c
 
-COMMON += hci_transport_h2_libusb.c run_loop_posix.c remote_device_db_fs.c
+COMMON += hci_transport_h2_libusb.c btstack_run_loop_posix.c btstack_link_key_db_fs.c
 
+include ${BTSTACK_ROOT}/example/Makefile.inc
 
-include ${BTSTACK_ROOT}/example/embedded/Makefile.inc
+CFLAGS += -g -Wall -Wmissing-prototypes -Wstrict-prototypes -Wshadow -Werror \
+          -I${BTSTACK_ROOT}/platform/posix \
+          -I${BTSTACK_ROOT}/platform/embedded \
+	      -I${BTSTACK_ROOT}/port/libusb
 
-CFLAGS += -I${POSIX_ROOT}/src -I${BTSTACK_ROOT}/platforms/libusb
-CFLAGS += -g -Wall -Wmissing-prototypes -Wstrict-prototypes -Wshadow
-CFLAGS += -Werror
-
-VPATH += ${BTSTACK_ROOT}/platforms/posix/src
-VPATH += ${BTSTACK_ROOT}/platforms/libusb
+VPATH += ${BTSTACK_ROOT}/platform/posix
+VPATH += ${BTSTACK_ROOT}/port/libusb
 
 # use pkg-config for libusb
 CFLAGS  += $(shell pkg-config libusb-1.0 --cflags)
@@ -24,21 +23,21 @@ LDFLAGS += $(shell pkg-config libusb-1.0 --libs)
 # LDFLAGS += -L/usr/local/lib -lusb-1.0
 
 # use pkg-config for portaudio
-CFLAGS  += $(shell pkg-config portaudio-2.0 --cflags)
-LDFLAGS += $(shell pkg-config portaudio-2.0 --libs)
+# CFLAGS  += $(shell pkg-config portaudio-2.0 --cflags)
+# LDFLAGS += $(shell pkg-config portaudio-2.0 --libs)
 # hard coded flags for portaudio in /usr/local/lib
 # CFLAGS  += -I/usr/local/include
 # LDFLAGS += -L/sw/lib -lportaudio -Wl,-framework,CoreAudio -Wl,-framework,AudioToolbox -Wl,-framework,AudioUnit -Wl,-framework,Carbon
 
-EXAMPLES = hfp_hf_test hfp_ag_test ble_peripheral_test ble_central_test l2cap_test classic_test bnep_test hsp_ag_test hsp_hs_test sco_loopback
+EXAMPLES = iopt hfp_hf_test hfp_ag_test ble_peripheral_test ble_central_test l2cap_test classic_test bnep_test hsp_ag_test hsp_hs_test sco_loopback
 
-all: ${BTSTACK_ROOT}/include/btstack/version.h ${EXAMPLES}
+all: ${EXAMPLES}
 
 # compile .gatt descriptions
 ble_peripheral_test.h: ble_peripheral_test.gatt
-	python ${BTSTACK_ROOT}/ble/compile-gatt.py $< $@ 
+	python ${BTSTACK_ROOT}/tool/compile_gatt.py $< $@ 
 ble_central_test.h: ble_central_test.gatt
-	python ${BTSTACK_ROOT}/ble/compile-gatt.py $< $@ 
+	python ${BTSTACK_ROOT}/tool/compile_gatt.py $< $@ 
 	
 ble_peripheral_test: ble_peripheral_test.h ${CORE_OBJ} ${COMMON_OBJ} ${ATT_OBJ} ${GATT_SERVER_OBJ} ${SM_REAL_OBJ} ble_peripheral_test.o
 	${CC} $(filter-out ble_peripheral_test.h,$^) ${CFLAGS} ${LDFLAGS} -o $@
@@ -69,3 +68,7 @@ bnep_test: ${CORE_OBJ} ${COMMON_OBJ} pan.o bnep_test.c
 
 sco_loopback: ${CORE_OBJ} ${COMMON_OBJ} sco_loopback.c
 	${CC} $^ ${CFLAGS} ${LDFLAGS} -o $@
+
+iopt: ${CORE_OBJ} ${COMMON_OBJ} pan.o hsp_ag.o hsp_hs.o hfp_ag.o hfp_hf.o hfp_gsm_model.o iopt.c hfp.o ${SDP_CLIENT}
+	${CC} $^ ${CFLAGS} ${LDFLAGS} -o $@
+	

@@ -50,10 +50,12 @@
 #include "CppUTest/TestHarness.h"
 #include "CppUTest/CommandLineTestRunner.h"
 
-#include "att.h"
-#include "att_db_util.h"
+#include "ble/att_db.h"
+#include "ble/att_db_util.h"
+#include "btstack_util.h"
+#include "bluetooth.h"
+ 
 #include "le_counter.h"
-#include <btstack/utils.h>
 
 #if 0
 PRIMARY_SERVICE, GAP_SERVICE
@@ -100,7 +102,6 @@ TEST(AttDbUtil, LeCounterDb){
     uint8_t * addr = att_db_util_get_address();
     uint16_t  size = att_db_util_get_size();
 
-    // hexdumpf(addr, size);    
     CHECK_EQUAL(size, (uint16_t)sizeof(profile_data));
     CHECK_EQUAL_ARRAY(profile_data, addr, size);
 }

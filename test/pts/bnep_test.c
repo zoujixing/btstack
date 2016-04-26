@@ -40,7 +40,7 @@
  * based on panu_demo implemented by Ole Reinhardt <ole.reinhardt@kernelconcepts.de>
  */
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -55,15 +55,15 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include <btstack/hci_cmds.h>
-#include <btstack/run_loop.h>
-#include <btstack/sdp_util.h>
-
-#include "hci.h"
+#include "btstack_event.h"
 #include "btstack_memory.h"
+#include "btstack_run_loop.h"
+#include "classic/sdp_server.h"
+#include "classic/sdp_util.h"
+#include "hci.h"
+#include "hci_cmd.h"
 #include "hci_dump.h"
 #include "l2cap.h"
-#include "sdp.h"
 #include "pan.h"
 #include "stdin_support.h"
 
@@ -91,7 +91,8 @@
 #define ARP_OPERATION_REPLY   2
 
 // prototypes
-static void show_usage();
+static void show_usage(void);
+static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 
 // Configuration for PTS
 static bd_addr_t pts_addr = {0x00,0x1b,0xDC,0x07,0x32,0xEF};
@@ -135,20 +136,49 @@ static size_t  network_buffer_len = 0;
 
 static uint8_t panu_sdp_record[200];
 
+static btstack_packet_callback_registration_t hci_event_callback_registration;
+
+static void hexdumpf(const void *data, int size){
+    char buffer[6*16+1];
+    int i, j;
+
+    uint8_t low = 0x0F;
+    uint8_t high = 0xF0;
+    j = 0;
+    for (i=0; i<size;i++){
+        uint8_t byte = ((uint8_t *)data)[i];
+        buffer[j++] = '0';
+        buffer[j++] = 'x';
+        buffer[j++] = char_for_nibble((byte & high) >> 4);
+        buffer[j++] = char_for_nibble(byte & low);
+        buffer[j++] = ',';
+        buffer[j++] = ' ';     
+        if (j >= 6*16 ){
+            buffer[j] = 0;
+            printf("%s\n", buffer);
+            j = 0;
+        }
+    }
+    if (j != 0){
+        buffer[j] = 0;
+        printf("%s\n", buffer);
+    }
+}
+
 static uint16_t setup_ethernet_header(int src_compressed, int dst_compressed, int broadcast, uint16_t network_protocol_type){
     // setup packet
     int pos = 0;
     // destination
     if (broadcast){
-        BD_ADDR_COPY(&network_buffer[pos], broadcast_addr);
+        bd_addr_copy(&network_buffer[pos], broadcast_addr);
     } else {
-        BD_ADDR_COPY(&network_buffer[pos], dst_compressed ? pts_addr : other_addr);
+        bd_addr_copy(&network_buffer[pos], dst_compressed ? pts_addr : other_addr);
     }
     pos += 6;
     // source
-    BD_ADDR_COPY(&network_buffer[pos], src_compressed ? local_addr   : other_addr);
+    bd_addr_copy(&network_buffer[pos], src_compressed ? local_addr   : other_addr);
     pos += 6;
-    net_store_16(network_buffer, pos, network_protocol_type);
+    big_endian_store_16(network_buffer, pos, network_protocol_type);
     pos += 2;
     return pos;
 }
@@ -204,19 +234,19 @@ static void send_arp_probe_ipv4(void){
     requested_address[3]++;
 
     int pos = setup_ethernet_header(1, 0, 1, NETWORK_TYPE_IPv4); 
-    net_store_16(network_buffer, pos, HARDWARE_TYPE_ETHERNET);
+    big_endian_store_16(network_buffer, pos, HARDWARE_TYPE_ETHERNET);
     pos += 2;
-    net_store_16(network_buffer, pos, NETWORK_TYPE_IPv4);
+    big_endian_store_16(network_buffer, pos, NETWORK_TYPE_IPv4);
     pos += 2;
     network_buffer[pos++] = 6; // Hardware length (HLEN) - 6 MAC  Address
     network_buffer[pos++] = 4; // Protocol length (PLEN) - 4 IPv4 Address
-    net_store_16(network_buffer, pos, ARP_OPERATION_REQUEST); 
+    big_endian_store_16(network_buffer, pos, ARP_OPERATION_REQUEST); 
     pos += 2;
-    BD_ADDR_COPY(&network_buffer[pos], local_addr); // Sender Hardware Address (SHA)
+    bd_addr_copy(&network_buffer[pos], local_addr); // Sender Hardware Address (SHA)
     pos += 6;
-    bzero(&network_buffer[pos], 4);                 // Sender Protocol Adress (SPA)
+    memset(&network_buffer[pos], 0, 4);                 // Sender Protocol Adress (SPA)
     pos += 4;
-    BD_ADDR_COPY(&network_buffer[pos], other_addr); // Target Hardware Address (THA) (ignored for requests)
+    bd_addr_copy(&network_buffer[pos], other_addr); // Target Hardware Address (THA) (ignored for requests)
     pos += 6;
     memcpy(&network_buffer[pos], requested_address, 4);
     pos += 4;
@@ -237,7 +267,7 @@ static uint16_t calc_internet_checksum(uint8_t * data, int size){
     uint32_t checksum = 0;
     while (size){
         // add 16-bit value
-        checksum = sum_ones_complement(checksum, READ_NET_16(data, 0));
+        checksum = sum_ones_complement(checksum, big_endian_read_16(data, 0));
         data += 2;
         size -= 2;
     }
@@ -266,16 +296,16 @@ static void send_ping_request_ipv4(void){
     
     // ipv4
     int total_length = sizeof(ipv4_header) + sizeof(icmp_packet);
-    net_store_16(ipv4_header, 2, total_length);
+    big_endian_store_16(ipv4_header, 2, total_length);
     uint16_t ipv4_checksum = calc_internet_checksum(ipv4_header, sizeof(ipv4_header));
-    net_store_16(ipv4_header, 10, ipv4_checksum);    
+    big_endian_store_16(ipv4_header, 10, ipv4_checksum);    
     // TODO: also set src/dest ip address
     memcpy(&network_buffer[pos], ipv4_header, sizeof(ipv4_header));
     pos += sizeof(ipv4_header);
 
     // icmp
     uint16_t icmp_checksum = calc_internet_checksum(icmp_packet, sizeof(icmp_packet));
-    net_store_16(icmp_packet, 2, icmp_checksum);    
+    big_endian_store_16(icmp_packet, 2, icmp_checksum);    
     memcpy(&network_buffer[pos], icmp_packet, sizeof(icmp_packet));
     pos += sizeof(icmp_packet);
 
@@ -305,16 +335,16 @@ static void send_ping_response_ipv4(void){
     
     // ipv4
     int total_length = sizeof(ipv4_header) + sizeof(icmp_packet);
-    net_store_16(ipv4_header, 2, total_length);
+    big_endian_store_16(ipv4_header, 2, total_length);
     uint16_t ipv4_checksum = calc_internet_checksum(ipv4_header, sizeof(ipv4_header));
-    net_store_16(ipv4_header, 10, ipv4_checksum);    
+    big_endian_store_16(ipv4_header, 10, ipv4_checksum);    
     // TODO: also set src/dest ip address
     memcpy(&network_buffer[pos], ipv4_header, sizeof(ipv4_header));
     pos += sizeof(ipv4_header);
 
     // icmp
     uint16_t icmp_checksum = calc_internet_checksum(icmp_packet, sizeof(icmp_packet));
-    net_store_16(icmp_packet, 2, icmp_checksum);    
+    big_endian_store_16(icmp_packet, 2, icmp_checksum);    
     memcpy(&network_buffer[pos], icmp_packet, sizeof(icmp_packet));
     pos += sizeof(icmp_packet);
 
@@ -350,18 +380,18 @@ static void send_ping_request_ipv6(void){
     
     // ipv6
     int payload_length = sizeof(icmp_packet);
-    net_store_16(ipv6_header, 4, payload_length);
+    big_endian_store_16(ipv6_header, 4, payload_length);
     // TODO: also set src/dest ip address
     int checksum = calc_internet_checksum(&ipv6_header[8], 32);
     checksum = sum_ones_complement(checksum, payload_length);
     checksum = sum_ones_complement(checksum, 58 << 8);
-    net_store_16(icmp_packet, 2, checksum);
+    big_endian_store_16(icmp_packet, 2, checksum);
     memcpy(&network_buffer[pos], ipv6_header, sizeof(ipv6_header));
     pos += sizeof(ipv6_header);
 
     // icmp
     uint16_t icmp_checksum = calc_internet_checksum(icmp_packet, sizeof(icmp_packet));
-    net_store_16(icmp_packet, 2, icmp_checksum);    
+    big_endian_store_16(icmp_packet, 2, icmp_checksum);    
     memcpy(&network_buffer[pos], icmp_packet, sizeof(icmp_packet));
     pos += sizeof(icmp_packet);
 
@@ -396,7 +426,7 @@ static void send_ndp_probe_ipv6(void){
 
     // ipv6
     int payload_length = sizeof(icmp_packet);
-    net_store_16(ipv6_header, 4, payload_length);
+    big_endian_store_16(ipv6_header, 4, payload_length);
     // source address ::
     // dest addresss - Modified EUI-64
     // ipv6_header[24..31] = FE80::
@@ -416,7 +446,7 @@ static void send_ndp_probe_ipv6(void){
 
     // icmp
     uint16_t icmp_checksum = calc_internet_checksum(icmp_packet, sizeof(icmp_packet));
-    net_store_16(icmp_packet, 2, icmp_checksum);    
+    big_endian_store_16(icmp_packet, 2, icmp_checksum);    
     memcpy(&network_buffer[pos], icmp_packet, sizeof(icmp_packet));
     pos += sizeof(icmp_packet);
 
@@ -446,25 +476,25 @@ static void send_llmnr_request_ipv4(void){
 
     // ipv4
     int total_length = sizeof(ipv4_header) + sizeof(udp_header) + sizeof (llmnr_packet) + sizeof(dns_data);
-    net_store_16(ipv4_header, 2, total_length);
+    big_endian_store_16(ipv4_header, 2, total_length);
     uint16_t ipv4_checksum = calc_internet_checksum(ipv4_header, sizeof(ipv4_header));
-    net_store_16(ipv4_header, 10, ~ipv4_checksum);    
+    big_endian_store_16(ipv4_header, 10, ~ipv4_checksum);    
     // TODO: also set src/dest ip address
     memcpy(&network_buffer[pos], ipv4_header, sizeof(ipv4_header));
     pos += sizeof(ipv4_header);
 
     // udp packet
-    net_store_16(udp_header, 0, 5355);   // source port
-    net_store_16(udp_header, 2, 5355);   // destination port
-    net_store_16(udp_header, 4, sizeof(udp_header) + sizeof(llmnr_packet) + sizeof(dns_data));
-    net_store_16(udp_header, 6, 0);      // no checksum
+    big_endian_store_16(udp_header, 0, 5355);   // source port
+    big_endian_store_16(udp_header, 2, 5355);   // destination port
+    big_endian_store_16(udp_header, 4, sizeof(udp_header) + sizeof(llmnr_packet) + sizeof(dns_data));
+    big_endian_store_16(udp_header, 6, 0);      // no checksum
     memcpy(&network_buffer[pos], udp_header, sizeof(udp_header));
     pos += sizeof(udp_header);
 
     // llmnr packet
-    bzero(llmnr_packet, sizeof(llmnr_packet));
-    net_store_16(llmnr_packet, 0, 0x1234);  // transaction id
-    net_store_16(llmnr_packet, 4, 1);   // one query
+    memset(llmnr_packet, 0, sizeof(llmnr_packet));
+    big_endian_store_16(llmnr_packet, 0, 0x1234);  // transaction id
+    big_endian_store_16(llmnr_packet, 4, 1);   // one query
 
     memcpy(&network_buffer[pos], llmnr_packet, sizeof(llmnr_packet));
     pos += sizeof(llmnr_packet);
@@ -501,25 +531,25 @@ static void send_llmnr_request_ipv6(void){
     int payload_length = sizeof(udp_header) + sizeof(llmnr_packet) + sizeof(dns_data);
 
     // llmnr header
-    bzero(llmnr_packet, sizeof(llmnr_packet));
-    net_store_16(llmnr_packet, 0, 0x1235);  // transaction id
-    net_store_16(llmnr_packet, 4, 1);   // one query
+    memset(llmnr_packet, 0, sizeof(llmnr_packet));
+    big_endian_store_16(llmnr_packet, 0, 0x1235);  // transaction id
+    big_endian_store_16(llmnr_packet, 4, 1);   // one query
 
     // ipv6 header
-    net_store_16(ipv6_header, 4, payload_length);
+    big_endian_store_16(ipv6_header, 4, payload_length);
 
     // udp header
-    bzero(udp_header, sizeof(udp_header));
-    net_store_16(udp_header, 0, 5355);   // source port
-    net_store_16(udp_header, 2, 5355);   // destination port
-    net_store_16(udp_header, 4, payload_length);
+    memset(udp_header, 0, sizeof(udp_header));
+    big_endian_store_16(udp_header, 0, 5355);   // source port
+    big_endian_store_16(udp_header, 2, 5355);   // destination port
+    big_endian_store_16(udp_header, 4, payload_length);
     int checksum = calc_internet_checksum(&ipv6_header[8], 32);
     checksum = sum_ones_complement(checksum, payload_length);       // payload len
     checksum = sum_ones_complement(checksum, ipv6_header[6] << 8);  // next header 
     checksum = sum_ones_complement(checksum, calc_internet_checksum(udp_header, sizeof(udp_header)));
     checksum = sum_ones_complement(checksum, calc_internet_checksum(llmnr_packet, sizeof(llmnr_packet)));
     checksum = sum_ones_complement(checksum, calc_internet_checksum(dns_data, sizeof(dns_data)));
-    net_store_16(udp_header, 6, ~checksum);
+    big_endian_store_16(udp_header, 6, ~checksum);
 
     // ethernet header
     int pos = setup_ethernet_header(1, 0, 1, NETWORK_TYPE_IPv6); // IPv6
@@ -566,14 +596,14 @@ static void show_usage(void){
     printf("---\n");
 }
 
-static int stdin_process(struct data_source *ds){
+static void stdin_process(btstack_data_source_t *ds, btstack_data_source_callback_type_t callback_type){
     char buffer;
     read(ds->fd, &buffer, 1);
 
     switch (buffer){
         case 'p':
             printf("Connecting to PTS at %s...\n", bd_addr_to_str(pts_addr));
-            bnep_connect(NULL, pts_addr, bnep_l2cap_psm, bnep_src_uuid, bnep_dest_uuid);
+            bnep_connect(&packet_handler, pts_addr, bnep_l2cap_psm, bnep_src_uuid, bnep_dest_uuid);
             break;
         case 'e':
             printf("Sending general ethernet packet\n");
@@ -628,11 +658,10 @@ static int stdin_process(struct data_source *ds){
             break;
 
     }
-    return 0;
 }
 
 /*************** PANU client routines *********************/
-static void packet_handler (void * connection, uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size)
+static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size)
 {
     uint8_t   event;
     bd_addr_t event_addr;
@@ -653,15 +682,15 @@ static void packet_handler (void * connection, uint8_t packet_type, uint16_t cha
             switch (event) {            
                 case BTSTACK_EVENT_STATE:
                     /* BT Stack activated, get started */ 
-                    if (packet[2] == HCI_STATE_WORKING) {
+                    if (btstack_event_state_get_state(packet) == HCI_STATE_WORKING){
                         printf("BNEP Test ready\n");
                         show_usage();
                     }
                     break;
 
                 case HCI_EVENT_COMMAND_COMPLETE:
-					if (COMMAND_COMPLETE_EVENT(packet, hci_read_bd_addr)){
-                        bt_flip_addr(local_addr, &packet[6]);
+					if (HCI_EVENT_IS_COMMAND_COMPLETE(packet, hci_read_bd_addr)){
+                        reverse_bd_addr(&packet[6], local_addr);
                         printf("BD-ADDR: %s\n", bd_addr_to_str(local_addr));
                         break;
                     }
@@ -669,21 +698,21 @@ static void packet_handler (void * connection, uint8_t packet_type, uint16_t cha
 
                 case HCI_EVENT_USER_CONFIRMATION_REQUEST:
                     // inform about user confirmation request
-                    printf("SSP User Confirmation Request with numeric value '%06u'\n", READ_BT_32(packet, 8));
+                    printf("SSP User Confirmation Request with numeric value '%06u'\n", little_endian_read_32(packet, 8));
                     printf("SSP User Confirmation Auto accept\n");
                     break;
-					
-				case BNEP_EVENT_OPEN_CHANNEL_COMPLETE:
-                    if (packet[2]) {
-                        printf("BNEP channel open failed, status %02x\n", packet[2]);
+				
+				case BNEP_EVENT_CHANNEL_OPENED:
+                    if (bnep_event_channel_opened_get_status(packet)) {
+                        printf("BNEP channel open failed, status %02x\n", bnep_event_channel_opened_get_status(packet));
                     } else {
                         // data: event(8), len(8), status (8), bnep source uuid (16), bnep destination uuid (16), remote_address (48)
-                        uuid_source = READ_BT_16(packet, 3);
-                        uuid_dest   = READ_BT_16(packet, 5);
-                        mtu         = READ_BT_16(packet, 7);
-                        bnep_cid    = channel;
+                        bnep_cid    = bnep_event_channel_opened_get_bnep_cid(packet);
+                        uuid_source = bnep_event_channel_opened_get_source_uuid(packet);
+                        uuid_dest   = bnep_event_channel_opened_get_destination_uuid(packet);
+                        mtu         = bnep_event_channel_opened_get_mtu(packet);
                         //bt_flip_addr(event_addr, &packet[9]); 
-                        memcpy(&event_addr, &packet[9], sizeof(bd_addr_t));
+                        memcpy(&event_addr, &packet[11], sizeof(bd_addr_t));
                         printf("BNEP connection open succeeded to %s source UUID 0x%04x dest UUID: 0x%04x, max frame size %u\n", bd_addr_to_str(event_addr), uuid_source, uuid_dest, mtu);
                     }
 					break;
@@ -696,7 +725,7 @@ static void packet_handler (void * connection, uint8_t packet_type, uint16_t cha
                     printf("BNEP channel closed\n");
                     break;
 
-                case BNEP_EVENT_READY_TO_SEND:
+                case BNEP_EVENT_CAN_SEND_NOW:
                     /* Check for parked network packets and send it out now */
                     if (network_buffer_len > 0) {
                         bnep_send(bnep_cid, network_buffer, network_buffer_len);
@@ -719,7 +748,7 @@ static void packet_handler (void * connection, uint8_t packet_type, uint16_t cha
             memcpy(src_addr, &packet[6], 6);
             // END TOOD
 
-            network_type = READ_NET_16(packet, 12);
+            network_type = big_endian_read_16(packet, 12);
             printf("BNEP packet received\n");
             printf("Dst Addr: %s\n", bd_addr_to_str(dst_addr));
             printf("Src Addr: %s\n", bd_addr_to_str(src_addr));
@@ -785,34 +814,28 @@ static void packet_handler (void * connection, uint8_t packet_type, uint16_t cha
 int btstack_main(int argc, const char * argv[]);
 int btstack_main(int argc, const char * argv[]){
     
+    /* Register for HCI events */
+    hci_event_callback_registration.callback = &packet_handler;
+    hci_add_event_handler(&hci_event_callback_registration);
 
     /* Initialize L2CAP */
     l2cap_init();
-    l2cap_register_packet_handler(packet_handler);
 
     /* Initialise BNEP */
     bnep_init();
-    bnep_register_packet_handler(packet_handler);
-    bnep_register_service(NULL, bnep_local_service_uuid, 1691);  /* Minimum L2CAP MTU for bnep is 1691 bytes */
+    bnep_register_service(&packet_handler, bnep_local_service_uuid, 1691);  /* Minimum L2CAP MTU for bnep is 1691 bytes */
 
     /* Initialize SDP and add PANU record */
     sdp_init();
 
     uint16_t network_packet_types[] = { NETWORK_TYPE_IPv4, NETWORK_TYPE_ARP, 0};    // 0 as end of list
-#ifdef EMBEDDED
-    service_record_item_t * service_record_item = (service_record_item_t *) panu_sdp_record;
-    pan_create_panu_service((uint8_t*) &service_record_item->service_record, network_packet_types, NULL, NULL, BNEP_SECURITY_NONE);
-    printf("SDP service buffer size: %u\n", (uint16_t) (sizeof(service_record_item_t) + de_get_len((uint8_t*) &service_record_item->service_record)));
-    sdp_register_service_internal(NULL, service_record_item);
-#else
-    pan_create_panu_service(panu_sdp_record, network_packet_types, NULL, NULL, BNEP_SECURITY_NONE);
+    pan_create_panu_sdp_record(panu_sdp_record, 0x10002, network_packet_types, NULL, NULL, BNEP_SECURITY_NONE);
     printf("SDP service record size: %u\n", de_get_len((uint8_t*) panu_sdp_record));
-    sdp_register_service_internal(NULL, (uint8_t*)panu_sdp_record);
-#endif
+    sdp_register_service((uint8_t*)panu_sdp_record);
 
     /* Turn on the device */
     hci_power_control(HCI_POWER_ON);
-    hci_discoverable_control(1);
+    gap_discoverable_control(1);
 
     btstack_stdin_setup(stdin_process);
 

@@ -14,14 +14,16 @@
 #include "CppUTest/TestHarness.h"
 #include "CppUTest/CommandLineTestRunner.h"
 
-#include <btstack/hci_cmds.h>
-#include <btstack/utils.h>
+#include "btstack_run_loop_posix.h"
+
+#include "hci_cmd.h"
+#include "btstack_util.h"
 
 #include "btstack_memory.h"
 #include "hci.h"
 #include "hci_dump.h"
 #include "l2cap.h"
-#include "sm.h"
+#include "ble/sm.h"
 
 // test data
 
@@ -106,6 +108,8 @@ uint8_t test_acl_packet_22[] = {
 
 bd_addr_t test_device_addr = {0x34, 0xb1, 0xf7, 0xd1, 0x77, 0x9b};
 
+static btstack_packet_callback_registration_t sm_event_callback_registration;
+
 void mock_init(void);
 void mock_simulate_hci_state_working(void);
 void mock_simulate_hci_event(uint8_t * packet, uint16_t size);
@@ -120,38 +124,33 @@ void mock_clear_packet_buffer(void);
 
 void app_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
     uint16_t aHandle;
-    sm_event_t * sm_event;
+    bd_addr_t event_address;
     switch (packet_type) {
         case HCI_EVENT_PACKET:
             switch (packet[0]) {
-                case SM_PASSKEY_INPUT_NUMBER: 
+                case SM_EVENT_PASSKEY_INPUT_NUMBER: 
                     // store peer address for input
-                    sm_event = (sm_event_t *) packet;
-                    printf("\nGAP Bonding %s (%u): Enter 6 digit passkey: '", bd_addr_to_str(sm_event->address), sm_event->addr_type);
+                    printf("\nGAP Bonding: Enter 6 digit passkey: '");
                     fflush(stdout);
                     break;
 
-                case SM_PASSKEY_DISPLAY_NUMBER:
-                    sm_event = (sm_event_t *) packet;
-                    printf("\nGAP Bonding %s (%u): Display Passkey '%06u\n", bd_addr_to_str(sm_event->address), sm_event->addr_type, sm_event->passkey);
+                case SM_EVENT_PASSKEY_DISPLAY_NUMBER:
+                    printf("\nGAP Bonding: Display Passkey '%06u\n", little_endian_read_32(packet, 11));
                     break;
 
-                case SM_PASSKEY_DISPLAY_CANCEL: 
-                    sm_event = (sm_event_t *) packet;
-                    printf("\nGAP Bonding %s (%u): Display cancel\n", bd_addr_to_str(sm_event->address), sm_event->addr_type);
+                case SM_EVENT_PASSKEY_DISPLAY_CANCEL: 
+                    printf("\nGAP Bonding: Display cancel\n");
                     break;
 
-                case SM_JUST_WORKS_REQUEST:
+                case SM_EVENT_JUST_WORKS_REQUEST:
                     // auto-authorize connection if requested
-                    sm_event = (sm_event_t *) packet;
-                    sm_just_works_confirm(sm_event->addr_type, sm_event->address);
+                    sm_just_works_confirm(little_endian_read_16(packet, 2));
                     printf("Just Works request confirmed\n");
                     break;
 
-                case SM_AUTHORIZATION_REQUEST:
+                case SM_EVENT_AUTHORIZATION_REQUEST:
                     // auto-authorize connection if requested
-                    sm_event = (sm_event_t *) packet;
-                    sm_authorization_grant(sm_event->addr_type, sm_event->address);
+                    sm_authorization_grant(little_endian_read_16(packet, 2));
                     break;
 
                 default:
@@ -159,7 +158,6 @@ void app_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet,
             }
     }
 }
-
 
 void CHECK_EQUAL_ARRAY(uint8_t * expected, uint8_t * actual, int size){
 	int i;
@@ -180,12 +178,12 @@ void CHECK_EQUAL_ARRAY(uint8_t * expected, uint8_t * actual, int size){
 TEST_GROUP(SecurityManager){
 	void setup(void){
 	    btstack_memory_init();
-	    run_loop_init(RUN_LOOP_POSIX);
+	    btstack_run_loop_init(btstack_run_loop_posix_get_instance());
 	    sm_init();
 	    sm_set_io_capabilities(IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
 	    sm_set_authentication_requirements( SM_AUTHREQ_BONDING ); 
-        sm_register_packet_handler(app_packet_handler);
-	}
+        sm_event_callback_registration.callback = &app_packet_handler;
+        sm_add_event_handler(&sm_event_callback_registration);	}
 };
 
 TEST(SecurityManager, MainTest){

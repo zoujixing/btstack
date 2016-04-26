@@ -8,23 +8,23 @@ CPPUTEST_HOME = ${BTSTACK_ROOT}/test/cpputest
 CFLAGS  = -g -Wall -I. -I../ -I${BTSTACK_ROOT}/src -I${BTSTACK_ROOT}/include
 LDFLAGS += -lCppUTest -lCppUTestExt
 
-VPATH += ${BTSTACK_ROOT}/ble 
+VPATH += ${BTSTACK_ROOT}/src/ble 
 VPATH += ${BTSTACK_ROOT}/src
-VPATH += ${BTSTACK_ROOT}/platforms/posix/src
+VPATH += ${BTSTACK_ROOT}/platform/posix
 
 COMMON = \
-    linked_list.c \
+    btstack_linked_list.c \
 
 COMMON_OBJ = $(COMMON:.c=.o)
 
-all: linked_list_test
+all: btstack_linked_list_test
 
-linked_list_test: ${COMMON_OBJ} linked_list_test.c
+btstack_linked_list_test: ${COMMON_OBJ} btstack_linked_list_test.c
 	${CC} $^ ${CFLAGS} ${LDFLAGS} -o $@
 
 test: all
-	./linked_list_test
+	./btstack_linked_list_test
 	
 clean:
-	rm -fr linked_list_test *.dSYM *.o ../src/*.o
+	rm -fr btstack_linked_list_test *.dSYM *.o ../src/*.o
 	

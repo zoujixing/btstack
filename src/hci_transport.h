@@ -47,7 +47,7 @@
 #define __HCI_TRANSPORT_H
 
 #include <stdint.h>
-#include <btstack/run_loop.h>
+#include "btstack_run_loop.h"
 
 #if defined __cplusplus
 extern "C" {
@@ -57,23 +57,65 @@ extern "C" {
 
 /* HCI packet types */
 typedef struct {
-    int    (*open)(void *transport_config);
-    int    (*close)(void *transport_config);
-    int    (*send_packet)(uint8_t packet_type, uint8_t *packet, int size);
+    /**
+     * transport name 
+     */
+    const char * name;
+
+    /**
+     * init transport
+     * @param transport_config
+     */
+    void   (*init) (const void *transport_config);
+
+    /**
+     * open transport connection
+     */
+    int    (*open)(void);
+
+    /**
+     * close transport connection
+     */
+    int    (*close)(void);
+
+    /**
+     * register packet handler for HCI packets: ACL, SCO, and Events
+     */
     void   (*register_packet_handler)(void (*handler)(uint8_t packet_type, uint8_t *packet, uint16_t size));
-    const char * (*get_transport_name)(void);
-    // custom extension for UART transport implementations
-    int    (*set_baudrate)(uint32_t baudrate);
-    // support async transport layers, e.g. IRQ driven without buffers
+
+    /**
+     * support async transport layers, e.g. IRQ driven without buffers
+     */
     int    (*can_send_packet_now)(uint8_t packet_type);
+
+    /**
+     * send packet
+     */
+    int    (*send_packet)(uint8_t packet_type, uint8_t *packet, int size);
+
+    /**
+     *  extension for UART transport implementations
+     */
+    int    (*set_baudrate)(uint32_t baudrate);
+
 } hci_transport_t;
 
+typedef enum {
+    HCI_TRANSPORT_CONFIG_UART,
+    HCI_TRANSPORT_CONFIG_USB
+} hci_transport_config_type_t;
+
 typedef struct {
-    const char *device_name;
+    hci_transport_config_type_t type;
+} hci_transport_config_t;
+
+typedef struct {
+    hci_transport_config_type_t type; // == HCI_TRANSPORT_CONFIG_UART
     uint32_t   baudrate_init; // initial baud rate
     uint32_t   baudrate_main; // = 0: same as initial baudrate
-    int   flowcontrol; // 
-} hci_uart_config_t;
+    int        flowcontrol;   // 
+    const char *device_name;
+} hci_transport_config_uart_t;
 
 
 // inline various hci_transport_X.h files
@@ -81,32 +123,20 @@ typedef struct {
 /*
  * @brief
  */
-extern hci_transport_t * hci_transport_h4_instance(void);
+extern const hci_transport_t * hci_transport_h4_instance(void);
 
 /*
  * @brief
  */
-extern hci_transport_t * hci_transport_h4_dma_instance(void);
+extern const hci_transport_t * hci_transport_h5_instance(void);
 
 /*
  * @brief
  */
-extern hci_transport_t * hci_transport_h4_iphone_instance(void);
+extern const hci_transport_t * hci_transport_usb_instance(void);
 
-/*
- * @brief
- */
-extern hci_transport_t * hci_transport_h5_instance(void);
-
-/*
- * @brief
- */
-extern hci_transport_t * hci_transport_usb_instance(void);
 
 /* API_END */
-
-// support for "enforece wake device" in h4 - used by iOS power management
-extern void hci_transport_h4_iphone_set_enforce_wake_device(char *path);
     
 #if defined __cplusplus
 }

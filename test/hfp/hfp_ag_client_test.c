@@ -41,7 +41,7 @@
 //
 // *****************************************************************************
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -51,17 +51,17 @@
 #include "CppUTest/TestHarness.h"
 #include "CppUTest/CommandLineTestRunner.h"
 
-#include <btstack/hci_cmds.h>
-#include <btstack/run_loop.h>
-#include <btstack/sdp_util.h>
 
+#include "btstack_debug.h"
+#include "btstack_event.h"
+#include "btstack_run_loop.h"
+#include "classic/hfp_ag.h"
+#include "classic/rfcomm.h"
+#include "classic/sdp_server.h"
+#include "classic/sdp_util.h"
 #include "hci.h"
+#include "hci_cmd.h"
 #include "l2cap.h"
-#include "rfcomm.h"
-#include "sdp.h"
-#include "sdp_parser.h"
-#include "debug.h"
-#include "hfp_ag.h"
 
 #include "mock.h"
 #include "test_sequences.h"
@@ -111,11 +111,11 @@ static hfp_generic_status_indicator_t hf_indicators[] = {
 static uint16_t handle = -1;
 static int memory_1_enabled = 1;
 
-int has_more_hfp_ag_commands(){
+int has_more_hfp_ag_commands(void){
     return has_more_hfp_commands(2,2);
 }
 
-char * get_next_hfp_ag_command(){
+char * get_next_hfp_ag_command(void){
    return get_next_hfp_command(2,2);
 }
 
@@ -302,8 +302,6 @@ static void simulate_test_sequence(hfp_test_item_t * test_item){
     printf("\nSimulate test sequence: \"%s\"\n", test_item->name);
     
     int i = 0;
-    static char * previous_cmd = NULL;
-    
     int previous_step = -1;
     while ( i < test_item->len){
         previous_step++;
@@ -335,8 +333,7 @@ static void simulate_test_sequence(hfp_test_item_t * test_item){
                     return;
                 } 
                 printf("Verified: '%s'\n", expected_cmd);
-                previous_cmd = ag_cmd;
-
+               
                 i++;
                 if (i < test_item->len){
                     expected_cmd = test_steps[i];
@@ -349,13 +346,7 @@ static void simulate_test_sequence(hfp_test_item_t * test_item){
     }   
 }
 
-void packet_handler(uint8_t * event, uint16_t event_size){
-    if (event[0] == RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE){
-        handle = READ_BT_16(event, 9);
-        printf("RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE received for handle 0x%04x\n", handle);
-        return;
-    }
-
+void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * event, uint16_t event_size){
 
     if (event[0] != HCI_EVENT_HFP_META) return;
 
@@ -369,6 +360,7 @@ void packet_handler(uint8_t * event, uint16_t event_size){
 
     switch (event[2]) {   
         case HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_ESTABLISHED:
+            handle = hfp_subevent_service_level_connection_established_get_con_handle(event);
             printf("Service level connection established.\n");
             break;
         case HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_RELEASED:

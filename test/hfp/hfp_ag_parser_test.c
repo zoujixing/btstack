@@ -44,8 +44,8 @@
 #include "CppUTest/TestHarness.h"
 #include "CppUTest/CommandLineTestRunner.h"
 
-#include "hfp.h"
-#include "hfp_ag.h"
+#include "classic/hfp.h"
+#include "classic/hfp_ag.h"
 
 void hfp_parse(hfp_connection_t * context, uint8_t byte, int isHandsFree);
 

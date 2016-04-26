@@ -46,8 +46,8 @@
 
 #include <stdint.h>
 #include <stdarg.h>
-#include <btstack/utils.h>
-#include <btstack/hci_cmds.h>
+#include "btstack_util.h"
+#include "hci_cmd.h"
 
 #if defined __cplusplus
 extern "C" {

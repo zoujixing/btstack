@@ -41,7 +41,7 @@
 //
 // *****************************************************************************
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -51,17 +51,16 @@
 #include "CppUTest/TestHarness.h"
 #include "CppUTest/CommandLineTestRunner.h"
 
-#include <btstack/hci_cmds.h>
-#include <btstack/run_loop.h>
-#include <btstack/sdp_util.h>
+#include "hci_cmd.h"
+#include "btstack_run_loop.h"
+#include "classic/sdp_util.h"
 
 #include "hci.h"
 #include "l2cap.h"
-#include "rfcomm.h"
-#include "sdp.h"
-#include "sdp_parser.h"
-#include "debug.h"
-#include "hfp_hf.h"
+#include "classic/rfcomm.h"
+#include "classic/sdp_server.h"
+#include "btstack_debug.h"
+#include "classic/hfp_hf.h"
 
 #include "mock.h"
 #include "test_sequences.h"
@@ -84,11 +83,11 @@ static int supported_features_with_codec_negotiation = 438;
 
 static uint16_t handle = -1;
 
-char * get_next_hfp_hf_command(){
+char * get_next_hfp_hf_command(void){
     return get_next_hfp_command(0,2);
 }
 
-int has_more_hfp_hf_commands(){
+int has_more_hfp_hf_commands(void){
     return has_more_hfp_commands(0,2);
 }
 
@@ -392,7 +391,7 @@ void simulate_test_sequence(hfp_test_item_t * test_item){
     }
 }
 
-void packet_handler(uint8_t * event, uint16_t event_size){
+void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * event, uint16_t event_size){
     if (event[0] != HCI_EVENT_HFP_META) return;
 
     switch (event[2]) {   

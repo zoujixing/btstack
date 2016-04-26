@@ -48,51 +48,18 @@
 
 #include "hci.h"
 #include "l2cap_signaling.h"
-#include <btstack/utils.h>
-#include <btstack/btstack.h>
+#include "btstack_util.h"
+#include "bluetooth.h"
 
 #if defined __cplusplus
 extern "C" {
 #endif
     
-#define L2CAP_SIG_ID_INVALID 0
-
-#define L2CAP_HEADER_SIZE 4
-
-// size of HCI ACL + L2CAP Header for regular data packets (8)
-#define COMPLETE_L2CAP_HEADER (HCI_ACL_HEADER_SIZE + L2CAP_HEADER_SIZE)
-    
-// minimum signaling MTU
-#define L2CAP_MINIMAL_MTU 48
-#define L2CAP_DEFAULT_MTU 672
-    
-// Minimum/default MTU
-#define L2CAP_LE_DEFAULT_MTU  23
-
 // check L2CAP MTU
 #if (L2CAP_MINIMAL_MTU + L2CAP_HEADER_SIZE) > HCI_ACL_PAYLOAD_SIZE
 #error "HCI_ACL_PAYLOAD_SIZE too small for minimal L2CAP MTU of 48 bytes"
 #endif    
     
-// L2CAP Fixed Channel IDs    
-#define L2CAP_CID_SIGNALING                 0x0001
-#define L2CAP_CID_CONNECTIONLESS_CHANNEL    0x0002
-#define L2CAP_CID_ATTRIBUTE_PROTOCOL        0x0004
-#define L2CAP_CID_SIGNALING_LE              0x0005
-#define L2CAP_CID_SECURITY_MANAGER_PROTOCOL 0x0006
-
-// L2CAP Configuration Result Codes
-#define L2CAP_CONF_RESULT_UNKNOWN_OPTIONS   0x0003
-
-// L2CAP Reject Result Codes
-#define L2CAP_REJ_CMD_UNKNOWN               0x0000
-    
-// Response Timeout eXpired
-#define L2CAP_RTX_TIMEOUT_MS   10000
-
-// Extended Response Timeout eXpired
-#define L2CAP_ERTX_TIMEOUT_MS 120000
-
 // private structs
 typedef enum {
     L2CAP_STATE_CLOSED = 1,           // no baseband
@@ -133,13 +100,20 @@ typedef enum {
 // info regarding an actual connection
 typedef struct {
     // linked list - assert: first field
-    linked_item_t    item;
+    btstack_linked_item_t    item;
     
+    // packet handler
+    btstack_packet_handler_t packet_handler;
+
+    // timer
+    btstack_timer_source_t rtx; // also used for ertx
+
     L2CAP_STATE state;
     L2CAP_CHANNEL_STATE_VAR state_var;
-    
+
+    // info
     bd_addr_t address;
-    hci_con_handle_t handle;
+    hci_con_handle_t con_handle;
     
     uint8_t   remote_sig_id;    // used by other side, needed for delayed response
     uint8_t   local_sig_id;     // own signaling identifier
@@ -157,21 +131,14 @@ typedef struct {
     gap_security_level_t required_security_level;
 
     uint8_t   reason; // used in decline internal
-    
-    timer_source_t rtx; // also used for ertx
-
-    // client connection
-    void * connection;
-    
-    // internal connection
-    btstack_packet_handler_t packet_handler;
+    uint8_t   waiting_for_can_send_now;
     
 } l2cap_channel_t;
 
 // info regarding potential connections
 typedef struct {
     // linked list - assert: first field
-    linked_item_t    item;
+    btstack_linked_item_t    item;
     
     // service id
     uint16_t  psm;
@@ -181,9 +148,6 @@ typedef struct {
 
     // incoming MPS
     uint16_t mps;
-    
-    // client connection
-    void *connection;    
     
     // internal connection
     btstack_packet_handler_t packet_handler;
@@ -201,15 +165,18 @@ typedef struct l2cap_signaling_response {
 } l2cap_signaling_response_t;
     
 
+void l2cap_register_fixed_channel(btstack_packet_handler_t packet_handler, uint16_t channel_id);
+int  l2cap_can_send_fixed_channel_packet_now(hci_con_handle_t con_handle, uint16_t channel_id);
+void l2cap_request_can_send_fix_channel_now_event(hci_con_handle_t con_handle, uint16_t channel_id);
+int  l2cap_send_connectionless(hci_con_handle_t con_handle, uint16_t cid, uint8_t *data, uint16_t len);
+int  l2cap_send_prepared_connectionless(hci_con_handle_t con_handle, uint16_t cid, uint16_t len);
 
-int  l2cap_can_send_fixed_channel_packet_now(uint16_t handle);
+// PTS Testing
+int l2cap_send_echo_request(hci_con_handle_t con_handle, uint8_t *data, uint16_t len);
+void l2cap_require_security_level_2_for_outgoing_sdp(void);
 
-// @deprecated use l2cap_can_send_fixed_channel_packet_now instead
-int  l2cap_can_send_connectionless_packet_now(void);
-
-int l2cap_send_echo_request(uint16_t handle, uint8_t *data, uint16_t len);
-
-void l2cap_require_security_level_2_for_outgoing_sdp(void);  // for PTS testing only
+// Used by RFCOMM - similar to l2cap_can-send_packet_now but does not check if outgoing buffer is reserved
+int  l2cap_can_send_prepared_packet_now(uint16_t local_cid);
 
 /* API_START */
 
@@ -219,19 +186,35 @@ void l2cap_require_security_level_2_for_outgoing_sdp(void);  // for PTS testing 
 void l2cap_init(void);
 
 /** 
- * @brief Registers a packet handler that handles HCI and general BTstack events.
+ * @brief Registers packet handler for LE Connection Parameter Update events
  */
-void l2cap_register_packet_handler(void (*handler)(void * connection, uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size));
+void l2cap_register_packet_handler(void (*handler)(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size));
+
+/** 
+ * @brief Get max MTU for Classic connections based on btstack configuration
+ */
+uint16_t l2cap_max_mtu(void);
+
+/** 
+ * @brief Get max MTU for LE connections based on btstack configuration
+ */
+uint16_t l2cap_max_le_mtu(void);
 
 /** 
  * @brief Creates L2CAP channel to the PSM of a remote device with baseband address. A new baseband connection will be initiated if necessary.
+ * @param packet_handler
+ * @param address
+ * @param psm
+ * @param mtu
+ * @param local_cid
+ * @param status
  */
-void l2cap_create_channel_internal(void * connection, btstack_packet_handler_t packet_handler, bd_addr_t address, uint16_t psm, uint16_t mtu);
+uint8_t l2cap_create_channel(btstack_packet_handler_t packet_handler, bd_addr_t address, uint16_t psm, uint16_t mtu, uint16_t * out_local_cid);
 
 /** 
  * @brief Disconnects L2CAP channel with given identifier. 
  */
-void l2cap_disconnect_internal(uint16_t local_cid, uint8_t reason);
+void l2cap_disconnect(uint16_t local_cid, uint8_t reason);
 
 /** 
  * @brief Queries the maximal transfer unit (MTU) for L2CAP channel with given identifier. 
@@ -241,51 +224,60 @@ uint16_t l2cap_get_remote_mtu_for_local_cid(uint16_t local_cid);
 /** 
  * @brief Sends L2CAP data packet to the channel with given identifier.
  */
-int l2cap_send_internal(uint16_t local_cid, uint8_t *data, uint16_t len);
+int l2cap_send(uint16_t local_cid, uint8_t *data, uint16_t len);
 
 /** 
- * @brief Registers L2CAP service with given PSM and MTU, and assigns a packet handler. On embedded systems, use NULL for connection parameter.
+ * @brief Registers L2CAP service with given PSM and MTU, and assigns a packet handler.
  */
-void l2cap_register_service_internal(void *connection, btstack_packet_handler_t packet_handler, uint16_t psm, uint16_t mtu, gap_security_level_t security_level);
+uint8_t l2cap_register_service(btstack_packet_handler_t packet_handler, uint16_t psm, uint16_t mtu, gap_security_level_t security_level);
 
 /** 
  * @brief Unregisters L2CAP service with given PSM.  On embedded systems, use NULL for connection parameter.
  */
-void l2cap_unregister_service_internal(void *connection, uint16_t psm);
+void l2cap_unregister_service(uint16_t psm);
 
 /** 
- * @brief Accepts/Deny incoming L2CAP connection.
+ * @brief Accepts incoming L2CAP connection.
  */
-void l2cap_accept_connection_internal(uint16_t local_cid);
-void l2cap_decline_connection_internal(uint16_t local_cid, uint8_t reason);
+void l2cap_accept_connection(uint16_t local_cid);
 
 /** 
- * @brief Non-blocking UART write
+ * @brief Deny incoming L2CAP connection.
  */
-int  l2cap_can_send_packet_now(uint16_t local_cid); 
-int  l2cap_can_send_prepared_packet_now(uint16_t local_cid);
- 
+void l2cap_decline_connection(uint16_t local_cid, uint8_t reason);
+
+/** 
+ * @brief Check if outgoing buffer is available and that there's space on the Bluetooth module
+ */
+int  l2cap_can_send_packet_now(uint16_t local_cid);    
+
+/** 
+ * @brief Request emission of L2CAP_EVENT_CAN_SEND_NOW as soon as possible
+ * @note L2CAP_EVENT_CAN_SEND_NOW might be emitted during call to this function
+ *       so packet handler should be ready to handle it
+ * @param local_cid
+ */
+void l2cap_request_can_send_now_event(uint16_t local_cid);
+
+/** 
+ * @brief Reserve outgoing buffer
+ */
 int  l2cap_reserve_packet_buffer(void);
-void l2cap_release_packet_buffer(void);
 
 /** 
  * @brief Get outgoing buffer and prepare data.
  */
 uint8_t *l2cap_get_outgoing_buffer(void);
 
+/** 
+ * @brief Send L2CAP packet prepared in outgoing buffer to channel
+ */
 int l2cap_send_prepared(uint16_t local_cid, uint16_t len);
 
-int l2cap_send_prepared_connectionless(uint16_t handle, uint16_t cid, uint16_t len);
-
 /** 
- * @brief Bluetooth 4.0 - allows to register handler for Attribute Protocol and Security Manager Protocol.
+ * @brief Release outgoing buffer (only needed if l2cap_send_prepared is not called)
  */
-void l2cap_register_fixed_channel(btstack_packet_handler_t packet_handler, uint16_t channel_id);
-
-uint16_t l2cap_max_mtu(void);
-uint16_t l2cap_max_le_mtu(void);
-
-int  l2cap_send_connectionless(uint16_t handle, uint16_t cid, uint8_t *data, uint16_t len);
+void l2cap_release_packet_buffer(void);
 
 /* API_END */
 
@@ -296,9 +288,9 @@ int  l2cap_send_connectionless(uint16_t handle, uint16_t cid, uint8_t *data, uin
  * @brief Regster L2CAP LE Credit Based Flow Control Mode service
  * @param
  */
-void l2cap_le_register_service_internal(void * connection, btstack_packet_handler_t packet_handler, uint16_t psm,
-                                        uint16_t mtu, uint16_t mps, uint16_t initial_credits, gap_security_level_t security_level);
-void l2cap_le_unregister_service_internal(void * connection, uint16_t psm);
+void l2cap_le_register_service(btstack_packet_handler_t packet_handler, uint16_t psm,
+    uint16_t mtu, uint16_t mps, uint16_t initial_credits, gap_security_level_t security_level);
+void l2cap_le_unregister_service(uint16_t psm);
 #endif
 
 #if defined __cplusplus

@@ -5,21 +5,22 @@
 //
 // *****************************************************************************
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <btstack/hci_cmds.h>
-#include <btstack/run_loop.h>
-
-#include "hci.h"
+#include "btstack_event.h"
 #include "btstack_memory.h"
+#include "btstack_run_loop.h"
+#include "hci.h"
+#include "hci_cmd.h"
 #include "hci_dump.h"
 #include "l2cap.h"
-#include "sdp_parser.h"
+#include "mock.h"
+#include "classic/sdp_util.h"
 
 #include "CppUTest/TestHarness.h"
 #include "CppUTest/CommandLineTestRunner.h"
@@ -52,64 +53,57 @@ void assertBuffer(int size){
     }
 }
 
-static void test_attribute_value_event(sdp_query_attribute_value_event_t* event){
+static void test_attribute_value_event(const uint8_t * event){
     static int recordId = 0;
     static int attributeId = 0;
     static int attributeOffset = 0;
     static int attributeLength = 0;
 
-    CHECK_EQUAL(event->type, 0x93);
+    CHECK_EQUAL(event[0], SDP_EVENT_QUERY_ATTRIBUTE_VALUE);
 
     // record ids are sequential
-   // printf("event->record_id %d",event->record_id);
+   // printf("sdp_event_query_attribute_byte_get_record_id(event) %d",sdp_event_query_attribute_byte_get_record_id(event));
 
-    if (event->record_id != recordId){
+    if (sdp_event_query_attribute_byte_get_record_id(event) != recordId){
         recordId++;
     }
-    CHECK_EQUAL(event->record_id, recordId);
+    CHECK_EQUAL(sdp_event_query_attribute_byte_get_record_id(event), recordId);
     
     // is attribute value complete
-    if (event->attribute_id != attributeId ){
+    if (sdp_event_query_attribute_byte_get_attribute_id(event) != attributeId ){
         if (attributeLength > 0){
             CHECK_EQUAL(attributeLength, attributeOffset+1);
         }
-        attributeId = event->attribute_id;
+        attributeId = sdp_event_query_attribute_byte_get_attribute_id(event);
         attributeOffset = 0;
     }
 
     // count attribute value bytes
-    if (event->data_offset != attributeOffset){
+    if (sdp_event_query_attribute_byte_get_data_offset(event) != attributeOffset){
         attributeOffset++;
     }
-    attributeLength = event->attribute_length;
+    attributeLength = sdp_event_query_attribute_byte_get_attribute_length(event);
 
-    CHECK_EQUAL(event->data_offset, attributeOffset);
+    CHECK_EQUAL(sdp_event_query_attribute_byte_get_data_offset(event), attributeOffset);
 }
 
 
-static void handle_sdp_parser_event(sdp_query_event_t * event){
-
-    sdp_query_attribute_value_event_t * ve;
-    sdp_query_complete_event_t * ce;
-
-    switch (event->type){
-        case SDP_QUERY_ATTRIBUTE_VALUE:
-            ve = (sdp_query_attribute_value_event_t*) event;
-            
-            test_attribute_value_event(ve);
+static void handle_sdp_parser_event(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
+    switch (packet[0]){
+        case SDP_EVENT_QUERY_ATTRIBUTE_VALUE:
+            test_attribute_value_event(packet);
             
             // handle new record
-            if (ve->record_id != record_id){
-                record_id = ve->record_id;
+            if (sdp_event_query_attribute_byte_get_record_id(packet) != record_id){
+                record_id = sdp_event_query_attribute_byte_get_record_id(packet);
             }
             // buffer data
-            assertBuffer(ve->attribute_length);
-            attribute_value[ve->data_offset] = ve->data;
+            assertBuffer(sdp_event_query_attribute_byte_get_attribute_length(packet));
+            attribute_value[sdp_event_query_attribute_byte_get_data_offset(packet)] = sdp_event_query_attribute_byte_get_data(packet);
             
             break;
-        case SDP_QUERY_COMPLETE:
-            ce = (sdp_query_complete_event_t*) event;
-            printf("General query done with status %d.\n", ce->status);
+        case SDP_EVENT_QUERY_COMPLETE:
+            printf("General query done with status %d.\n", sdp_event_query_complete_get_status(packet));
             break;
     }
 }
@@ -120,8 +114,8 @@ TEST_GROUP(SDPClient){
         attribute_value_buffer_size = 1000;
         attribute_value = (uint8_t*) malloc(attribute_value_buffer_size);
         record_id = -1;
+        sdp_parser_init(&handle_sdp_parser_event);
         sdp_parser_init_service_attribute_search();
-        sdp_parser_register_callback(handle_sdp_parser_event);
     }
 };
 

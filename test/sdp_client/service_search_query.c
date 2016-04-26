@@ -5,21 +5,22 @@
 //
 // *****************************************************************************
 
-#include "btstack-config.h"
+#include "btstack_config.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <btstack/hci_cmds.h>
-#include <btstack/run_loop.h>
-
-#include "hci.h"
+#include "btstack_event.h"
 #include "btstack_memory.h"
+#include "btstack_run_loop.h"
+#include "hci.h"
+#include "hci_cmd.h"
 #include "hci_dump.h"
 #include "l2cap.h"
-#include "sdp_parser.h"
+#include "mock.h"
+#include "classic/sdp_util.h"
 
 #include "CppUTest/TestHarness.h"
 #include "CppUTest/CommandLineTestRunner.h"
@@ -39,25 +40,15 @@ static uint8_t  sdp_test_record_list[] = {
 0x00, 0x00, 0x00, 0x0A
 };
 
-
-static void handle_sdp_parser_event(sdp_query_event_t * event){
-    sdp_query_service_record_handle_event_t * ve;
-    sdp_query_complete_event_t * ce;
-
+static void handle_sdp_parser_event(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
     static uint32_t record_handle = sdp_test_record_list[0];
-
-    switch (event->type){
-        case SDP_QUERY_SERVICE_RECORD_HANDLE:
-            ve = (sdp_query_service_record_handle_event_t*) event;
-            
-            CHECK_EQUAL(ve->record_handle, record_handle);
+    switch (packet[0]){
+        case SDP_EVENT_QUERY_SERVICE_RECORD_HANDLE:
+            CHECK_EQUAL(sdp_event_query_service_record_handle_get_record_handle(packet), record_handle);
             record_handle++;
-
-            
             break;
-        case SDP_QUERY_COMPLETE:
-            ce = (sdp_query_complete_event_t*) event;
-            printf("General query done with status %d.\n", ce->status);
+        case SDP_EVENT_QUERY_COMPLETE:
+            printf("General query done with status %d.\n", sdp_event_query_complete_get_status(packet));
             break;
     }
 }
@@ -65,8 +56,8 @@ static void handle_sdp_parser_event(sdp_query_event_t * event){
 
 TEST_GROUP(SDPClient){
     void setup(void){
+        sdp_parser_init(&handle_sdp_parser_event);
         sdp_parser_init_service_search();
-        sdp_parser_register_callback(handle_sdp_parser_event);
     }
 };
 

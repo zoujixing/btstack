@@ -46,40 +46,37 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <btstack/btstack.h>
 #include "hci.h"
 #include "hci_dump.h"
-#include "sdp_query_rfcomm.h"
-#include "rfcomm.h"
-#include "hfp_hf.h"
+#include "classic/sdp_client_rfcomm.h"
+#include "classic/rfcomm.h"
+#include "classic/hfp_hf.h"
 
 #include "mock.h"
 
-static void *registered_sdp_app_context;
 static uint8_t sdp_rfcomm_channel_nr = 1;
 const char sdp_rfcomm_service_name[] = "BTstackMock";
 static uint16_t rfcomm_cid = 1;
 static bd_addr_t dev_addr;
 static uint16_t sco_handle = 10;
-static uint8_t rfcomm_payload[200];
+static uint8_t rfcomm_payload[1000];
 static uint16_t rfcomm_payload_len = 0;
 
-static uint8_t outgoing_rfcomm_payload[200];
+static uint8_t outgoing_rfcomm_payload[1000];
 static uint16_t outgoing_rfcomm_payload_len = 0;
 
 static uint8_t rfcomm_reserved_buffer[1000];
 
-void * active_connection;
 hfp_connection_t * hfp_context;
 
-void (*registered_rfcomm_packet_handler)(void * connection, uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
-void (*registered_sdp_app_callback)(sdp_query_event_t * event, void * context);
+void (*registered_rfcomm_packet_handler)(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
+void (*registered_sdp_app_callback)(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 
-uint8_t * get_rfcomm_payload(){
+uint8_t * get_rfcomm_payload(void){
 	return &rfcomm_payload[0];
 }
 
-uint16_t get_rfcomm_payload_len(){
+uint16_t get_rfcomm_payload_len(void){
 	return rfcomm_payload_len;
 }
 
@@ -131,11 +128,14 @@ void print_without_newlines(uint8_t *data, uint16_t len){
 }
 
 extern "C" void l2cap_init(void){}
-
-extern "C" void l2cap_register_packet_handler(void (*handler)(void * connection, uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size)){
+extern "C" void hci_add_event_handler(btstack_packet_callback_registration_t * callback_handler){
 }
 
-int  rfcomm_send_internal(uint16_t rfcomm_cid, uint8_t *data, uint16_t len){
+int  rfcomm_send(uint16_t rfcomm_cid, uint8_t *data, uint16_t len){
+
+    // printf("mock: rfcomm send: ");
+    print_without_newlines(data, len);
+
 	int start_command_offset = 2;
     int end_command_offset = 2;
     
@@ -154,11 +154,21 @@ int  rfcomm_send_internal(uint16_t rfcomm_cid, uint8_t *data, uint16_t len){
         rfcomm_payload_len = len;
     }
 	
-    //print_without_newlines(rfcomm_payload,rfcomm_payload_len);
+    // print_without_newlines(rfcomm_payload,rfcomm_payload_len);
     return 0;
 }
 
+void rfcomm_request_can_send_now_event(uint16_t rfcomm_cid){
+
+    // printf("mock: rfcomm_request_can_send_now_event\n");
+
+    uint8_t event[] = { RFCOMM_EVENT_CAN_SEND_NOW, 2, 0, 0};
+    little_endian_store_16(event, 2, rfcomm_cid);
+    registered_rfcomm_packet_handler(HCI_EVENT_PACKET, 0, event, sizeof(event));
+}
+
 int       rfcomm_reserve_packet_buffer(void){
+    // printf("mock: rfcomm_reserve_packet_buffer\n");
     return 1;
 };
 void      rfcomm_release_packet_buffer(void){};
@@ -169,29 +179,29 @@ uint16_t rfcomm_get_max_frame_size(uint16_t rfcomm_cid){
     return sizeof(rfcomm_reserved_buffer);
 }
 int rfcomm_send_prepared(uint16_t rfcomm_cid, uint16_t len){
-    printf("--- rfcomm_send_prepared with len %u ---\n", len);
-    return rfcomm_send_internal(rfcomm_cid, rfcomm_reserved_buffer, len);
+    // printf("--- rfcomm_send_prepared with len %u ---\n", len);
+    return rfcomm_send(rfcomm_cid, rfcomm_reserved_buffer, len);
 }
 
-static void hci_event_sco_complete(){
+static void hci_event_sco_complete(void){
     uint8_t event[19];
     uint8_t pos = 0;
     event[pos++] = HCI_EVENT_SYNCHRONOUS_CONNECTION_COMPLETE;
     event[pos++] = sizeof(event) - 2;
 
     event[pos++] = 0; //status
-    bt_store_16(event,  pos, sco_handle);   pos += 2; // sco handle
-    bt_flip_addr(&event[pos], dev_addr);    pos += 6;
+    little_endian_store_16(event,  pos, sco_handle);   pos += 2; // sco handle
+    reverse_bd_addr(dev_addr, &event[pos]);    pos += 6;
 
     event[pos++] = 0; // link_type
     event[pos++] = 0; // transmission_interval
     event[pos++] = 0; // retransmission_interval
 
-    bt_store_16(event,  pos, 0);   pos += 2; // rx_packet_length
-    bt_store_16(event,  pos, 0);   pos += 2; // tx_packet_length
+    little_endian_store_16(event,  pos, 0);   pos += 2; // rx_packet_length
+    little_endian_store_16(event,  pos, 0);   pos += 2; // tx_packet_length
 
     event[pos++] = 0; // air_mode
-    (*registered_rfcomm_packet_handler)(active_connection, HCI_EVENT_PACKET, 0, event, sizeof(event));
+    (*registered_rfcomm_packet_handler)(HCI_EVENT_PACKET, 0, event, sizeof(event));
 }
 
 int hci_send_cmd(const hci_cmd_t *cmd, ...){
@@ -202,97 +212,103 @@ int hci_send_cmd(const hci_cmd_t *cmd, ...){
 	return 0;
 }
 
-
-void sdp_query_rfcomm_register_callback(void(*sdp_app_callback)(sdp_query_event_t * event, void * context), void * context){
-	registered_sdp_app_callback = sdp_app_callback;
-	registered_sdp_app_context = context;
-}
-
 static void sdp_query_complete_response(uint8_t status){
-    sdp_query_complete_event_t complete_event = {
-        SDP_QUERY_COMPLETE, 
-        status
-    };
-    (*registered_sdp_app_callback)((sdp_query_event_t*)&complete_event, registered_sdp_app_context);
+    uint8_t event[3];
+    event[0] = SDP_EVENT_QUERY_COMPLETE;
+    event[1] = 1;
+    event[2] = status;
+    (*registered_sdp_app_callback)(HCI_EVENT_PACKET, 0, event, sizeof(event));
 }
 
-static void sdp_query_rfcomm_service_response(uint8_t status){
-    sdp_query_rfcomm_service_event_t service_event = {
-        SDP_QUERY_RFCOMM_SERVICE, 
-        sdp_rfcomm_channel_nr,
-        (uint8_t *)sdp_rfcomm_service_name
-    };
-    (*registered_sdp_app_callback)((sdp_query_event_t*)&service_event, registered_sdp_app_context);
+static void sdp_client_query_rfcomm_service_response(uint8_t status){
+    int sdp_service_name_len = strlen(sdp_rfcomm_service_name);
+    uint8_t event[3+SDP_SERVICE_NAME_LEN+1];
+    event[0] = SDP_EVENT_QUERY_RFCOMM_SERVICE;
+    event[1] = sdp_service_name_len + 1;
+    event[2] = sdp_rfcomm_channel_nr;
+    memcpy(&event[3], sdp_rfcomm_service_name, sdp_service_name_len);
+    event[3+sdp_service_name_len] = 0;
+    (*registered_sdp_app_callback)(HCI_EVENT_PACKET, 0, event, sizeof(event));
 }
 
-void sdp_query_rfcomm_channel_and_name_for_uuid(bd_addr_t remote, uint16_t uuid){
-	// printf("sdp_query_rfcomm_channel_and_name_for_uuid %p\n", registered_sdp_app_callback);
-	sdp_query_rfcomm_service_response(0);
+uint8_t sdp_client_query_rfcomm_channel_and_name_for_uuid(btstack_packet_handler_t callback, bd_addr_t remote, uint16_t uuid){
+	// printf("sdp_client_query_rfcomm_channel_and_name_for_uuid %p\n", registered_sdp_app_callback);
+    registered_sdp_app_callback = callback;
+	sdp_client_query_rfcomm_service_response(0);
 	sdp_query_complete_response(0);
+    return 0;
 }
 
 
-void rfcomm_create_channel_internal(void * connection, bd_addr_t addr, uint8_t channel){
-	// RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE
-	active_connection = connection;
+uint8_t rfcomm_create_channel(btstack_packet_handler_t handler, bd_addr_t addr, uint8_t channel, uint16_t * out_cid){
+
+    // printf("mock: rfcomm_create_channel addr %s\n", bd_addr_to_str(addr));
+
+    registered_rfcomm_packet_handler = handler;
+
+	// RFCOMM_EVENT_CHANNEL_OPENED
     uint8_t event[16];
     uint8_t pos = 0;
-    event[pos++] = RFCOMM_EVENT_OPEN_CHANNEL_COMPLETE;
+    event[pos++] = RFCOMM_EVENT_CHANNEL_OPENED;
     event[pos++] = sizeof(event) - 2;
     event[pos++] = 0;
     
-    bt_flip_addr(&event[pos], addr);
+    reverse_bd_addr(addr, &event[pos]);
     memcpy(dev_addr, addr, 6);
     pos += 6;
     
-    bt_store_16(event,  pos, 1);   pos += 2;
+    little_endian_store_16(event,  pos, 1);   pos += 2;
 	event[pos++] = 0;
 	
-	bt_store_16(event, pos, rfcomm_cid); pos += 2;       // channel ID
-	bt_store_16(event, pos, 200); pos += 2;   // max frame size
-    (*registered_rfcomm_packet_handler)(active_connection, HCI_EVENT_PACKET, 0, (uint8_t *) event, pos);
+	little_endian_store_16(event, pos, rfcomm_cid); pos += 2;       // channel ID
+	little_endian_store_16(event, pos, 200); pos += 2;   // max frame size
+    (*registered_rfcomm_packet_handler)(HCI_EVENT_PACKET, 0, (uint8_t *) event, pos);
+
+    if (out_cid){
+        *out_cid = rfcomm_cid;
+    }
+    return 0;
 }
 
 int rfcomm_can_send_packet_now(uint16_t rfcomm_cid){
+    // printf("mock: rfcomm_can_send_packet_now\n");
 	return 1;
 }
 
-void rfcomm_disconnect_internal(uint16_t rfcomm_cid){
+void rfcomm_disconnect(uint16_t rfcomm_cid){
 	uint8_t event[4];
 	event[0] = RFCOMM_EVENT_CHANNEL_CLOSED;
     event[1] = sizeof(event) - 2;
-    bt_store_16(event, 2, rfcomm_cid);
-    (*registered_rfcomm_packet_handler)(active_connection, HCI_EVENT_PACKET, 0, (uint8_t *) event, sizeof(event));
+    little_endian_store_16(event, 2, rfcomm_cid);
+    (*registered_rfcomm_packet_handler)(HCI_EVENT_PACKET, 0, (uint8_t *) event, sizeof(event));
 }
 
-void rfcomm_register_packet_handler(void (*handler)(void * connection, uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size)){
-	registered_rfcomm_packet_handler = handler;
-}
-
-void rfcomm_register_service_internal(void * connection, uint8_t channel, uint16_t max_frame_size){
-	printf("rfcomm_register_service_internal\n");
-}
-
-
-void sdp_query_rfcomm_channel_and_name_for_search_pattern(bd_addr_t remote, uint8_t * des_serviceSearchPattern){
-	printf("sdp_query_rfcomm_channel_and_name_for_search_pattern\n");
-}
-
-
-void rfcomm_accept_connection_internal(uint16_t rfcomm_cid){
-	printf("rfcomm_accept_connection_internal \n");
-}
-
-void run_loop_add_timer(timer_source_t *timer){
-}
-
-int  run_loop_remove_timer(timer_source_t *timer){
+uint8_t rfcomm_register_service(btstack_packet_handler_t handler, uint8_t channel, uint16_t max_frame_size){
+	// printf("rfcomm_register_service\n");
+    registered_rfcomm_packet_handler = handler;
     return 0;
 }
-void run_loop_set_timer_handler(timer_source_t *ts, void (*process)(timer_source_t *_ts)){
+
+
+void sdp_client_query_rfcomm_channel_and_name_for_search_pattern(bd_addr_t remote, uint8_t * des_serviceSearchPattern){
+	// printf("sdp_client_query_rfcomm_channel_and_name_for_search_pattern\n");
 }
 
-void run_loop_set_timer(timer_source_t *a, uint32_t timeout_in_ms){
+
+void rfcomm_accept_connection(uint16_t rfcomm_cid){
+	// printf("rfcomm_accept_connection \n");
+}
+
+void btstack_run_loop_add_timer(btstack_timer_source_t *timer){
+}
+
+int  btstack_run_loop_remove_timer(btstack_timer_source_t *timer){
+    return 0;
+}
+void btstack_run_loop_set_timer_handler(btstack_timer_source_t *ts, void (*process)(btstack_timer_source_t *_ts)){
+}
+
+void btstack_run_loop_set_timer(btstack_timer_source_t *a, uint32_t timeout_in_ms){
 }
 
 
@@ -301,21 +317,21 @@ void hci_emit_disconnection_complete(uint16_t handle, uint8_t reason){
     event[0] = HCI_EVENT_DISCONNECTION_COMPLETE;
     event[1] = sizeof(event) - 2;
     event[2] = 0; // status = OK
-    bt_store_16(event, 3, handle);
+    little_endian_store_16(event, 3, handle);
     event[5] = reason;
-    (*registered_rfcomm_packet_handler)(active_connection, HCI_EVENT_PACKET, 0, event, sizeof(event));
+    (*registered_rfcomm_packet_handler)(HCI_EVENT_PACKET, 0, event, sizeof(event));
 }
 
-le_command_status_t gap_disconnect(hci_con_handle_t handle){
+uint8_t gap_disconnect(hci_con_handle_t handle){
     hci_emit_disconnection_complete(handle, 0);
-    return BLE_PERIPHERAL_OK;
+    return 0;
 }
 
-uint16_t hci_get_sco_voice_setting(){
+uint16_t hci_get_sco_voice_setting(void){
     return 0x40;
 }
 
-int hci_remote_eSCO_supported(hci_con_handle_t handle){
+int hci_remote_esco_supported(hci_con_handle_t handle){
     return 0;
 }
 
@@ -344,7 +360,7 @@ void inject_hfp_command_to_hf(uint8_t * data, int len){
     add_new_lines_to_hfp_command(data, len);
     // printf("inject_hfp_command_to_hf to HF: ");
     // print_without_newlines(outgoing_rfcomm_payload,outgoing_rfcomm_payload_len);
-    (*registered_rfcomm_packet_handler)(active_connection, RFCOMM_DATA_PACKET, rfcomm_cid, (uint8_t *) &outgoing_rfcomm_payload[0], outgoing_rfcomm_payload_len);
+    (*registered_rfcomm_packet_handler)(RFCOMM_DATA_PACKET, rfcomm_cid, (uint8_t *) &outgoing_rfcomm_payload[0], outgoing_rfcomm_payload_len);
 
 }
 
@@ -352,9 +368,12 @@ void inject_hfp_command_to_ag(uint8_t * data, int len){
     if (data[0] == '+') return;
     
     add_new_lines_to_hfp_command(data, len);
-    (*registered_rfcomm_packet_handler)(active_connection, RFCOMM_DATA_PACKET, rfcomm_cid, (uint8_t *) &outgoing_rfcomm_payload[0], outgoing_rfcomm_payload_len);
-}
 
+    // printf("mock: inject command to ag: ");
+    // print_without_newlines(data, len);
+
+    (*registered_rfcomm_packet_handler)(RFCOMM_DATA_PACKET, rfcomm_cid, (uint8_t *) &outgoing_rfcomm_payload[0], outgoing_rfcomm_payload_len);
+}
 
 
 

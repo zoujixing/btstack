@@ -15,20 +15,22 @@
 #include "CppUTest/CommandLineTestRunner.h"
 #include "CppUTestExt/MockSupport.h"
 
-#include <btstack/hci_cmds.h>
+#include "hci_cmd.h"
 
 #include "btstack_memory.h"
 #include "hci.h"
-#include "gatt_client.h"
+#include "ble/gatt_client.h"
+#include "btstack_event.h"
  
 static uint8_t advertisement_received;
 static uint8_t connected;
 static uint8_t advertisement_packet[150];
+static btstack_packet_callback_registration_t hci_event_callback_registration;
 
-void mock_simulate_hci_state_working();
+void mock_simulate_hci_state_working(void);
 void mock_simulate_command_complete(const hci_cmd_t *cmd);
-void mock_simulate_scan_response();
-void mock_simulate_connected();
+void mock_simulate_scan_response(void);
+void mock_simulate_connected(void);
 
 
 void CHECK_EQUAL_ARRAY(const uint8_t * expected, uint8_t * actual, int size){
@@ -39,29 +41,28 @@ void CHECK_EQUAL_ARRAY(const uint8_t * expected, uint8_t * actual, int size){
 
 // -----------------------------------------------------
 
-static void handle_hci_event(void * connection, uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
+static void handle_hci_event(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
     if (packet_type != HCI_EVENT_PACKET) return;
     
     bd_addr_t address;
     uint8_t event = packet[0];
     switch (event) {
         case BTSTACK_EVENT_STATE:
-            if (packet[2] != HCI_STATE_WORKING) break;
-            le_central_set_scan_parameters(0,0x0030, 0x0030);
-            le_central_start_scan();
+            if (btstack_event_state_get_state(packet) != HCI_STATE_WORKING) break;
+            gap_set_scan_parameters(0,0x0030, 0x0030);
+            gap_start_scan();
             break;
             
-        case GAP_LE_ADVERTISING_REPORT:{
+        case GAP_EVENT_ADVERTISING_REPORT:{
             advertisement_received = 1;
             memcpy(advertisement_packet, packet, size);
-            
-            bt_flip_addr(address, &packet[4]);
-            le_central_connect(address, (bd_addr_type_t)packet[3]);
+            gap_event_advertising_report_get_address(packet, address);
+            gap_connect(address, (bd_addr_type_t)packet[3]);
             break;
         }
         case HCI_EVENT_LE_META:
             // wait for connection complete
-            if (packet[2] !=  HCI_SUBEVENT_LE_CONNECTION_COMPLETE) break;
+            if (hci_event_le_meta_get_subevent_code(packet) !=  HCI_SUBEVENT_LE_CONNECTION_COMPLETE) break;
             connected = 1;
             break;
         case HCI_EVENT_DISCONNECTION_COMPLETE:
@@ -77,8 +78,11 @@ TEST_GROUP(LECentral){
 	void setup(void){
 		advertisement_received = 0;
 		connected = 0;
+        // register for HCI events
+        hci_event_callback_registration.callback = &handle_hci_event;
+        hci_add_event_handler(&hci_event_callback_registration);
+
 		l2cap_init();
-        l2cap_register_packet_handler(&handle_hci_event);
 		
 		mock().expectOneCall("hci_can_send_packet_now_using_packet_buffer").andReturnValue(1);
 		mock_simulate_hci_state_working();
